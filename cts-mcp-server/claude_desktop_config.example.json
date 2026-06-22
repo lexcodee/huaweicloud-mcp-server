@@ -1,0 +1,15 @@
+{
+  "_comment": "Drop into ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows). Restart Claude Desktop after editing.",
+  "mcpServers": {
+    "huaweicloud-cts": {
+      "command": "cts-mcp-server",
+      "env": {
+        "HUAWEICLOUD_ACCESS_KEY_ID": "AKIDxxxxxxxxxxxxxxxx",
+        "HUAWEICLOUD_SECRET_ACCESS_KEY": "SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "HUAWEICLOUD_PROJECT_ID": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "HUAWEICLOUD_REGION": "af-south-1",
+        "CTS_DEFAULT_TIMEZONE": "Asia/Shanghai"
+      }
+    }
+  }
+}

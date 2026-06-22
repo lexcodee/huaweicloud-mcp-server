@@ -1,0 +1,8 @@
+[tool.uv.workspace]
+members = [
+    "ecs-mcp-server",
+    "codearts-pipeline-mcp-server",
+    "cts-mcp-server",
+    "mcp-auth-common",
+    "mcp-gateway",
+]

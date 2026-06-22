@@ -1,0 +1,45 @@
+# MCP Gateway service manifest.
+#
+# The gateway loads this file at startup, applies three layers of override
+# (env var MCP_GATEWAY_ENABLED_SERVICES, then CLI --enable / --disable),
+# and mounts every resulting `enabled: true` service on the path under
+# `mount_path`. Adding a new MCP server is: add a new entry here +
+# add the package to the workspace members + embed AuthStrategy in the
+# server. No Nginx changes are required.
+
+jwt:
+  issuer: mcp-gateway
+  # Public-key spec. Accepted forms:
+  #   file:/etc/mcp-gateway/jwt-public.pem
+  #   env:MCP_JWT_PUBLIC_KEY            (use the env var contents)
+  #   <inline PEM body>                 (taken verbatim)
+  public_key: env:MCP_JWT_PUBLIC_KEY
+  # Optional. When set, the JWT 'aud' claim must match.
+  audience: null
+  # Clock-skew tolerance for exp/nbf in seconds.
+  leeway: 30
+
+services:
+  - name: ecs
+    enabled: true
+    module: ecs_mcp_server
+    attr: mcp
+    mount_path: /ecs
+    # Path-level (coarse) RBAC. The caller must hold at least one of these
+    # roles to talk to /ecs/*. Finer per-tool checks (start vs delete) live
+    # inside ecs-mcp-server itself.
+    required_roles: [readonly, operator, admin]
+
+  - name: pipeline
+    enabled: true
+    module: pipeline_mcp_server
+    attr: mcp
+    mount_path: /pipeline
+    required_roles: [readonly, operator, admin]
+
+  - name: cts
+    enabled: true
+    module: cts_mcp_server
+    attr: mcp
+    mount_path: /cts
+    required_roles: [readonly, operator, admin]

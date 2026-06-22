@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codearts-pipeline-mcp-server"
+version = "0.1.0"
+description = "MCP server for managing Huawei Cloud CodeArts Pipelines"
+requires-python = ">=3.10"
+authors = [{ name = "Hermes Agent" }]
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+    "huaweicloudsdkcore>=3.1.100",
+    "huaweicloudsdkcodeartspipeline>=3.1.100",
+    "mcp-auth-common",
+]
+
+[tool.uv.sources]
+mcp-auth-common = { workspace = true }
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+]
+
+[project.scripts]
+codearts-pipeline-mcp-server = "pipeline_mcp_server.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline_mcp_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]

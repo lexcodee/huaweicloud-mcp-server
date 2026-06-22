@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "huaweicloud-ecs-mcp-server"
+version = "0.1.0"
+description = "MCP Server for managing Huawei Cloud ECS lifecycle via natural language"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ECS MCP Maintainers" }]
+keywords = ["mcp", "huaweicloud", "ecs", "llm", "ai-agent"]
+
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "huaweicloudsdkcore>=3.1.100",
+    "huaweicloudsdkecs>=3.1.100",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+    "uvicorn[standard]>=0.30",
+    "starlette>=0.37",
+    "mcp-auth-common",
+]
+
+[tool.uv.sources]
+mcp-auth-common = { workspace = true }
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+]
+
+[project.scripts]
+ecs-mcp-server = "ecs_mcp_server.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ecs_mcp_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show *)",
+      "Bash(pip index *)",
+      "Bash(python3 *)",
+      "Bash(pip install *)",
+      "Bash(chmod +x *)",
+      "Bash(python *)",
+      "Bash(uv --version)",
+      "Bash(pip --version)",
+      "Bash(kill %1)",
+      "Bash(command -v uv)",
+      "Read(//usr/local/bin/**)"
+    ]
+  }
+}
