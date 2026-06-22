@@ -130,9 +130,12 @@ from the current request:
 **Default is standalone.** A server accidentally started without the
 gateway still requires authentication.
 
-There is **no** `none` mode. The only escape hatch is `MCP_AUTH_MODE=dev`,
-which synthesises a full-admin identity for loopback callers only and
-emits a `WARNING` log on every invocation.
+There is **no** `none` mode. The only escape hatch is
+`MCP_GATEWAY_AUTH_MODE=dev`, which synthesises a full-admin identity
+for callers without JWT verification. By default it restricts to
+loopback callers only (`MCP_DEV_LOOPBACK_ONLY=true`). Set
+`MCP_DEV_LOOPBACK_ONLY=false` to allow any caller — this is the
+dangerous escape hatch for isolated CI/test environments.
 
 ## Tool-level authorization matrix
 
@@ -160,20 +163,104 @@ emits a `WARNING` log on every invocation.
 
 Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**.
 
+## Token CLI
+
+The gateway ships a built-in token management CLI with three subcommands:
+
+### `mcp-gateway token keygen` — Generate RSA key pair
+
+```bash
+mcp-gateway token keygen                              # defaults: jwt-private.pem / jwt-public.pem / 2048 bits
+mcp-gateway token keygen --bits 4096                  # stronger key
+mcp-gateway token keygen --private-key /etc/mcp/jwt-private.pem \
+                          --public-key  /etc/mcp/jwt-public.pem
+```
+
+Outputs the private key (mode 0600) and public key PEM files, and prints
+the `MCP_JWT_PUBLIC_KEY` env var snippet for your `.env`.
+
+### `mcp-gateway token create` — Sign a JWT
+
+```bash
+# Minimal — outputs raw JWT string
+mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
+
+# Full options
+mcp-gateway token create \
+  --sub ops-bot \
+  --roles operator,readonly \
+  --private-key jwt-private.pem \
+  --issuer mcp-gateway \
+  --audience mcp-api \
+  --tenant proj-abc \
+  --ttl 7200 \
+  --format json
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--sub` | Yes | — | Subject (user or service account id) |
+| `--roles` | Yes | — | Comma-separated role list |
+| `--private-key` | No | `jwt-private.pem` | Path to RSA private key PEM |
+| `--issuer` | No | `mcp-gateway` | JWT `iss` claim |
+| `--audience` | No | — | JWT `aud` claim |
+| `--tenant` | No | — | Tenant / project id |
+| `--ttl` | No | `3600` | Token lifetime in seconds |
+| `--format` | No | `token` | `token` (raw JWT) or `json` (with metadata) |
+
+The `--format json` output includes the token plus decoded metadata
+(`sub`, `roles`, `iss`, `iat`, `exp`, `expires_at`, `tenant`).
+
+Unknown role names (outside `admin`/`operator`/`readonly`) produce a
+stderr warning but are not rejected — custom hierarchies are valid.
+
+### `mcp-gateway token verify` — Decode and verify a JWT
+
+```bash
+mcp-gateway token verify --public-key jwt-public.pem --token "eyJ..."
+# Or pipe from stdin:
+echo "eyJ..." | mcp-gateway token verify --public-key jwt-public.pem
+```
+
+Prints the decoded payload as pretty-printed JSON (with a human-readable
+`_expires_at` field). Returns exit code 1 on expired / invalid /
+wrong-issuer tokens.
+
+### Typical workflow
+
+```bash
+# 1. Generate keys (once)
+mcp-gateway token keygen
+
+# 2. Sign a token
+TOKEN=*** token create --sub ops-bot --roles operator,readonly)
+
+# 3. Call the gateway
+curl -H "Authorization: Bearer *** https://gateway:8080/ecs/sse
+
+# 4. Debug / inspect
+mcp-gateway token verify --token "$TOKEN"
+```
+
 ## Quick start
 
 ```bash
 # 1. Generate an RSA key pair for JWT signing
-openssl genrsa -out jwt-private.pem 2048
-openssl rsa -in jwt-private.pem -pubout -out jwt-public.pem
+mcp-gateway token keygen
+# Or manually:
+#   openssl genrsa -out jwt-private.pem 2048
+#   openssl rsa -in jwt-private.pem -pubout -out jwt-public.pem
 
-# 2. Edit the root .env — set JWT key, AK/SK, region, etc.
-#    MCP_JWT_PUBLIC_KEY="$(cat jwt-public.pem)"
-#    MCP_AUTH_MODE=gateway
+# 2. Sign a JWT token
+mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
+
+# 3. Edit the root .env — set JWT key, AK/SK, region, etc.
+#    MCP_JWT_PUBLIC_KEY="file:jwt-public.pem"
+#    MCP_GATEWAY_AUTH_MODE=jwt
 #    HUAWEICLOUD_ACCESS_KEY_ID=...
 #    HUAWEICLOUD_SECRET_ACCESS_KEY=...
 
-# 3. Run the gateway (from workspace root)
+# 4. Run the gateway (from workspace root)
 ./start.sh                     # all enabled services
 ./start.sh ecs,pipeline        # only these two
 ./start.sh ecs --port 9000     # custom port
@@ -182,9 +269,17 @@ openssl rsa -in jwt-private.pem -pubout -out jwt-public.pem
 ## Development / local debugging
 
 ```bash
-# Dev mode: no JWT required from loopback, WARN on every call
-# Set in .env:  MCP_AUTH_MODE=dev
+# Dev mode (loopback only): no JWT required from loopback, WARN on every call
+# Set in .env:  MCP_GATEWAY_AUTH_MODE=*** --host 127.0.0.1 --port 8080
+
+# Dev mode (open — CI only): any caller allowed, CRITICAL on startup
+# Set in .env:  MCP_GATEWAY_AUTH_MODE=*** --host 127.0.0.1 --port 8080
 ./start.sh --host 127.0.0.1 --port 8080
+
+# Or sign a real token for local testing:
+mcp-gateway token keygen
+TOKEN=*** token create --sub dev --roles admin --private-key jwt-private.pem)
+curl -H "Authorization: Bearer *** http://127.0.0.1:8080/ecs/sse
 ```
 
 ⚠ **DEV MODE IS UNSAFE.** It must never be used on a network-accessible

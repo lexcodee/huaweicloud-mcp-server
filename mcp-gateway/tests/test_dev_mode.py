@@ -1,7 +1,8 @@
 """Test: gateway dev mode — local development without JWT.
 
-Verifies that MCP_GATEWAY_AUTH_MODE=dev allows loopback callers
-without a JWT, while still rejecting non-loopback callers.
+Verifies that MCP_GATEWAY_AUTH_MODE=dev allows callers
+without a JWT, with loopback restriction controlled by
+MCP_DEV_LOOPBACK_ONLY.
 """
 from __future__ import annotations
 
@@ -38,7 +39,7 @@ def _build_app(auth_mode: str, path_roles: list | None = None):
     os.environ["MCP_GATEWAY_HOST"] = "127.0.0.1"
     app.add_middleware(
         GatewayAuthMiddleware,
-        public_key_spec="",  # not needed in dev/disabled
+        public_key_spec="",  # not needed in dev
         issuer="mcp-gateway",
         audience=None,
         leeway=30,
@@ -48,7 +49,9 @@ def _build_app(auth_mode: str, path_roles: list | None = None):
     return app
 
 
-class TestDevMode:
+class TestDevModeLoopbackOnly:
+    """dev mode with MCP_DEV_LOOPBACK_ONLY=true (default)."""
+
     def test_dev_mode_loopback_passes(self):
         """Dev mode: loopback caller gets a synthesised admin identity."""
         app = _build_app("dev")
@@ -139,21 +142,125 @@ class TestDevMode:
         os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
 
 
-class TestDisabledMode:
-    def test_disabled_mode_allows_all(self):
-        """Disabled mode: every request passes without auth."""
-        app = _build_app("disabled")
+class TestDevModeLoopbackOpen:
+    """dev mode with MCP_DEV_LOOPBACK_ONLY=false (former disabled mode)."""
+
+    def test_open_mode_allows_all(self):
+        """loopback_only=false: every request passes without auth."""
+        os.environ["MCP_GATEWAY_AUTH_MODE"] = "dev"
+        os.environ["MCP_DEV_LOOPBACK_ONLY"] = "false"
+        os.environ["MCP_GATEWAY_HOST"] = "0.0.0.0"
+
+        async def ok(request):
+            return JSONResponse({"ok": True, "identity": str(request.scope.get("mcp_identity"))})
+
+        app = Starlette(routes=[Route("/ecs/sse", ok, methods=["GET"])])
+        app.add_middleware(
+            GatewayAuthMiddleware,
+            public_key_spec="",
+            issuer="mcp-gateway",
+            audience=None,
+            leeway=30,
+            path_roles=[],
+            exempt_paths=("/healthz",),
+        )
+
         client = TestClient(app)
         r = client.get("/ecs/sse")
         assert r.status_code == 200
-        os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
 
-    def test_disabled_mode_no_token_needed(self):
-        app = _build_app("disabled")
-        client = TestClient(app)
-        r = client.get("/ecs/sse")  # no headers
-        assert r.status_code == 200
         os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
+        os.environ.pop("MCP_DEV_LOOPBACK_ONLY", None)
+
+    def test_open_mode_no_token_needed(self):
+        """loopback_only=false: no Authorization header is required."""
+        os.environ["MCP_GATEWAY_AUTH_MODE"] = "dev"
+        os.environ["MCP_DEV_LOOPBACK_ONLY"] = "false"
+        os.environ["MCP_GATEWAY_HOST"] = "0.0.0.0"
+
+        async def ok(request):
+            return JSONResponse({"ok": True})
+
+        app = Starlette(routes=[Route("/ecs/sse", ok, methods=["GET"])])
+        app.add_middleware(
+            GatewayAuthMiddleware,
+            public_key_spec="",
+            issuer="mcp-gateway",
+            audience=None,
+            leeway=30,
+            path_roles=[],
+            exempt_paths=("/healthz",),
+        )
+
+        client = TestClient(app)
+        r = client.get("/ecs/sse")
+        assert r.status_code == 200
+
+        os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
+        os.environ.pop("MCP_DEV_LOOPBACK_ONLY", None)
+
+    def test_open_mode_custom_identity(self):
+        """loopback_only=false: MCP_DEV_SUBJECT and MCP_DEV_ROLES still work."""
+        os.environ["MCP_GATEWAY_AUTH_MODE"] = "dev"
+        os.environ["MCP_DEV_LOOPBACK_ONLY"] = "false"
+        os.environ["MCP_DEV_SUBJECT"] = "ci-bot"
+        os.environ["MCP_DEV_ROLES"] = "readonly"
+        os.environ["MCP_GATEWAY_HOST"] = "0.0.0.0"
+
+        captured = {}
+
+        async def capture(request):
+            captured["identity"] = request.scope.get("mcp_identity")
+            return JSONResponse({"ok": True})
+
+        app = Starlette(routes=[Route("/ecs/sse", capture, methods=["GET"])])
+        app.add_middleware(
+            GatewayAuthMiddleware,
+            public_key_spec="",
+            issuer="mcp-gateway",
+            audience=None,
+            leeway=30,
+            path_roles=[],
+            exempt_paths=("/healthz",),
+        )
+
+        client = TestClient(app)
+        r = client.get("/ecs/sse")
+        assert r.status_code == 200
+        assert captured["identity"].sub == "ci-bot"
+        assert captured["identity"].roles == ["readonly"]
+
+        os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
+        os.environ.pop("MCP_DEV_LOOPBACK_ONLY", None)
+        os.environ.pop("MCP_DEV_SUBJECT", None)
+        os.environ.pop("MCP_DEV_ROLES", None)
+
+    def test_open_mode_loopback_still_works(self):
+        """loopback_only=false: loopback callers also pass."""
+        os.environ["MCP_GATEWAY_AUTH_MODE"] = "dev"
+        os.environ["MCP_DEV_LOOPBACK_ONLY"] = "false"
+        os.environ["MCP_GATEWAY_HOST"] = "127.0.0.1"
+
+        async def ok(request):
+            return JSONResponse({"ok": True})
+
+        app = Starlette(routes=[Route("/ecs/sse", ok, methods=["GET"])])
+        app.add_middleware(
+            GatewayAuthMiddleware,
+            public_key_spec="",
+            issuer="mcp-gateway",
+            audience=None,
+            leeway=30,
+            path_roles=[],
+            exempt_paths=("/healthz",),
+        )
+
+        client = TestClient(app)
+        r = client.get("/ecs/sse")
+        assert r.status_code == 200
+
+        os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
+        os.environ.pop("MCP_DEV_LOOPBACK_ONLY", None)
 
 
 class TestInvalidMode:
@@ -170,6 +277,23 @@ class TestInvalidMode:
             path_roles=[],
         )
         # Starlette builds middleware lazily; trigger it via a request.
+        with pytest.raises(RuntimeError, match="is invalid"):
+            client = TestClient(app)
+            client.get("/")
+        os.environ.pop("MCP_GATEWAY_AUTH_MODE", None)
+
+    def test_disabled_mode_no_longer_valid(self):
+        """'disabled' is no longer a valid mode — use dev + loopback_only=false."""
+        os.environ["MCP_GATEWAY_AUTH_MODE"] = "disabled"
+        app = Starlette(routes=[])
+        app.add_middleware(
+            GatewayAuthMiddleware,
+            public_key_spec="",
+            issuer="mcp-gateway",
+            audience=None,
+            leeway=30,
+            path_roles=[],
+        )
         with pytest.raises(RuntimeError, match="is invalid"):
             client = TestClient(app)
             client.get("/")

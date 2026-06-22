@@ -1,6 +1,6 @@
 # Huawei Cloud MCP Servers — Monorepo
 
-A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) monorepo containing three Huawei Cloud MCP (Model Context Protocol) servers and a unified ASGI gateway that mounts them on a single port with JWT authentication.
+A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) monorepo containing Huawei Cloud MCP (Model Context Protocol) servers and a unified ASGI gateway that mounts them on a single port with JWT authentication. Currently ships with ECS, CodeArts Pipeline, and CTS servers; additional servers can be added without changing the gateway or Nginx.
 
 ```
 https://example.com/ecs/sse         ← ECS 云主机生命周期管理
@@ -33,7 +33,7 @@ mcp-servers/
 │
 └── mcp-gateway/                   ← ASGI 网关（Starlette Mount + JWT 中间件）
     ├── src/mcp_gateway/
-    ├── tests/                     ← 70 个测试，全部通过
+    ├── tests/                     ← 96 个测试，全部通过
     ├── deploy/                    ← systemd + Nginx 配置
     └── README.md                  ← 网关详细文档
 ```
@@ -125,15 +125,19 @@ mcp-servers/
   authentication. If this is local development, this is expected and safe.
 ```
 
-**不再需要 `MCP_AUTH_MODE` 环境变量。** 鉴权模式由运行环境自动决定。
-
 ### 网关鉴权模式
 
 | 模式 | 环境变量 | 行为 | 场景 |
 |------|---------|------|------|
 | `jwt` | `MCP_GATEWAY_AUTH_MODE=jwt`（默认） | 完整 JWT 验签 + 路径 RBAC | 生产 |
-| `dev` | `MCP_GATEWAY_AUTH_MODE=dev` | 跳过 JWT，loopback 调用者合成 admin Identity | 本地开发 |
-| `disabled` | `MCP_GATEWAY_AUTH_MODE=disabled` | 跳过所有鉴权 | 隔离测试 |
+| `dev` | `MCP_GATEWAY_AUTH_MODE=dev` | 跳过 JWT，合成 Identity | 非生产 |
+
+dev 模式通过 `MCP_DEV_LOOPBACK_ONLY` 控制来源限制：
+
+| 子模式 | 环境变量 | 行为 | 场景 |
+|--------|---------|------|------|
+| loopback-only | `MCP_DEV_LOOPBACK_ONLY=true`（默认） | 仅 loopback 调用者放行，其余 403 | 本地开发 |
+| open | `MCP_DEV_LOOPBACK_ONLY=false` | 任何来源放行（CRITICAL 日志） | CI / 隔离测试 |
 
 ## 快速开始
 
@@ -167,9 +171,8 @@ HUAWEICLOUD_ACCESS_KEY_ID=your-ak
 HUAWEICLOUD_SECRET_ACCESS_KEY=your-sk
 HUAWEICLOUD_PROJECT_ID=your-project-id
 
-# 各服务 Region
+# 各服务 Region（共用）
 HUAWEICLOUD_REGION=cn-north-4
-CODEARTS_REGION=cn-north-4
 CODEARTS_DEFAULT_PROJECT_ID=your-codearts-project-id
 
 # 网关鉴权模式（本地开发用 dev，生产用 jwt）
@@ -193,7 +196,20 @@ MCP_GATEWAY_HOST=127.0.0.1
 ./start.sh ecs --port 9000 --log-level debug
 ```
 
-### 4. 验证
+### 4. 签发 JWT Token（生产环境）
+
+```bash
+# 生成密钥对
+mcp-gateway token keygen
+
+# 签发 token
+mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
+
+# 调用网关（携带 token）
+curl -H "Authorization: Bearer *** http://127.0.0.1:8080/ecs/sse
+```
+
+### 5. 验证
 
 ```bash
 # 探活
@@ -225,8 +241,30 @@ ecs-mcp-server
 ### 生成 JWT 密钥对
 
 ```bash
+# 使用内置 CLI（推荐）
+mcp-gateway token keygen
+
+# 或使用 openssl
 openssl genrsa -out jwt-private.pem 2048
 openssl rsa -in jwt-private.pem -pubout -out jwt-public.pem
+```
+
+### 签发 JWT Token
+
+```bash
+# 签发 admin 角色 token（默认 1 小时有效）
+mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
+
+# 签发 operator + readonly 角色，自定义 TTL 和租户
+mcp-gateway token create --sub ops-bot --roles operator,readonly \
+  --private-key jwt-private.pem --ttl 7200 --tenant proj-abc
+
+# JSON 格式输出（含过期时间等元数据）
+mcp-gateway token create --sub bob --roles readonly \
+  --private-key jwt-private.pem --format json
+
+# 验证/解码 token（调试用）
+mcp-gateway token verify --public-key jwt-public.pem --token "eyJ..."
 ```
 
 在 `.env` 中设置：
@@ -268,7 +306,7 @@ ExecStart=/opt/mcp-servers/start.sh \
 
 启动日志明确打印"已挂载/已跳过"服务及跳过原因。
 
-## 添加第 4 个 MCP Server
+## 添加新的 MCP Server
 
 1. 创建 Server 包，内嵌 AutoAuth（参考现有 Server 的 `tools/*.py`）
 2. 在根 `pyproject.toml` 的 `[tool.uv.workspace] members` 中添加目录
@@ -297,7 +335,7 @@ cd mcp-gateway
 python3 -m pytest tests/ -v
 ```
 
-**70 个测试，全部通过**，覆盖：
+**96 个测试，全部通过**，覆盖：
 
 | 类别 | 数量 | 验证内容 |
 |------|------|---------|
@@ -306,10 +344,12 @@ python3 -m pytest tests/ -v
 | 网关鉴权中间件 | 9 | JWT 验签 + RBAC + Identity 注入 |
 | AutoAuth 自动检测 | 6 | 网关模式读 scope / 独立模式合成 dev Identity + WARN |
 | StandaloneAuth（网关内部） | 6 | JWT 自验签 / 过期拒绝 |
-| 网关 dev 模式 | 7 | 免 JWT / loopback 放行 / disabled 模式 |
+| 网关 dev 模式 | 10 | 免 JWT / loopback 放行 / open 模式 / disabled 不再有效 |
+| 结构化日志 | 9 | JSON 格式化 / extra 字段提升 / 审计事件验证 / text 向后兼容 |
 | 工具级 RBAC | 14 | 角色层级 + 三服务授权矩阵 |
 | manifest 覆盖优先级 | 9 | 三层覆盖 + 跳过原因 + 重复检测 |
 | SSE 前缀回归 | 6 | 传输层 endpoint 路径正确 |
+| Token CLI（keygen / create / verify） | 14 | 密钥生成 + 签发 + 验签 + 错误处理 + 端到端往返 |
 
 ## 环境变量速查
 
@@ -318,12 +358,13 @@ python3 -m pytest tests/ -v
 | `HUAWEICLOUD_ACCESS_KEY_ID` | ✅ | 华为云 AK（三服务共用） |
 | `HUAWEICLOUD_SECRET_ACCESS_KEY` | ✅ | 华为云 SK（三服务共用） |
 | `HUAWEICLOUD_PROJECT_ID` | ✅ | IAM 项目 ID（ECS/CTS 使用） |
-| `HUAWEICLOUD_REGION` | ✅ | ECS/CTS 区域 |
-| `CODEARTS_REGION` | ✅ | CodeArts Pipeline 区域（≠ HUAWEICLOUD_REGION） |
+| `HUAWEICLOUD_REGION` | ✅ | 所有服务共用区域（ECS / CTS / CodeArts Pipeline） |
 | `CODEARTS_DEFAULT_PROJECT_ID` | 推荐 | CodeArts 项目 UUID |
-| `MCP_GATEWAY_AUTH_MODE` | ✅ | 网关鉴权模式：`jwt` / `dev` / `disabled` |
+| `MCP_GATEWAY_AUTH_MODE` | ✅ | 网关鉴权模式：`jwt` / `dev` |
 | `MCP_GATEWAY_HOST` | ✅ | 监听地址（dev 模式建议 `127.0.0.1`） |
 | `MCP_GATEWAY_PORT` | 推荐 | 监听端口，默认 `8080` |
+| `MCP_DEV_LOOPBACK_ONLY` | 可选 | dev 模式来源限制：`true`（默认，仅 loopback）/ `false`（任何来源） |
+| `MCP_GATEWAY_LOG_FORMAT` | 可选 | 日志格式：`text`（默认）/ `json`（结构化，供 log shipper） |
 | `MCP_JWT_PUBLIC_KEY` | jwt 模式必需 | RS256 公钥（`file:` / `env:` / 内联 PEM） |
 | `MCP_JWT_ISSUER` | 推荐 | JWT 签发者，默认 `mcp-gateway` |
 | `MCP_GATEWAY_ENABLED_SERVICES` | 可选 | 启用服务白名单（逗号分隔） |

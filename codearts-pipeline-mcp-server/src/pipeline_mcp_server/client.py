@@ -40,7 +40,7 @@ def _build_client(settings: Settings) -> CodeArtsPipelineClient:
             code="UNSUPPORTED_REGION",
             message=(
                 f"region '{settings.region}' is not recognised by the "
-                "CodeArts Pipeline SDK. Check CODEARTS_REGION."
+                "CodeArts Pipeline SDK. Check HUAWEICLOUD_REGION."
             ),
             hint=(
                 "Common values: af-south-1, cn-north-1, cn-north-4, "
@@ -121,10 +121,23 @@ def call_raw_put(
     # response is an SdkResponse subclass; .status_code is the HTTP status.
     # Huawei Cloud quirk: some APIs return HTTP 200 with an error body
     # (e.g. {"error_code": "DEVPIPE.00011301", "error_msg": "..."}).
-    # Check for error_code even on 200.
+    # The SDK may deserialize error_code/error_msg as top-level attrs, OR
+    # leave them in raw_content as a JSON body.  Check both paths.
     if hasattr(response, "status_code"):
         error_code = getattr(response, "error_code", None)
         error_msg = getattr(response, "error_msg", None)
+        # If not set as attributes, try parsing raw_content JSON body
+        if not error_code:
+            import json as _json
+            raw = getattr(response, "raw_content", None)
+            if raw:
+                try:
+                    body = _json.loads(raw if isinstance(raw, str) else raw.decode("utf-8"))
+                    if isinstance(body, dict):
+                        error_code = body.get("error_code")
+                        error_msg = body.get("error_msg")
+                except (ValueError, UnicodeDecodeError, AttributeError):
+                    pass
         if error_code:
             return {
                 "ok": False,

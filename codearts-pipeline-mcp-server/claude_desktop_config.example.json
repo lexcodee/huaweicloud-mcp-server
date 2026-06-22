@@ -6,7 +6,7 @@
       "env": {
         "HUAWEICLOUD_ACCESS_KEY_ID": "AKIDxxxxxxxxxxxxxxxx",
         "HUAWEICLOUD_SECRET_ACCESS_KEY": "SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "CODEARTS_REGION": "af-south-1",
+        "HUAWEICLOUD_REGION": "af-south-1",
         "CODEARTS_DEFAULT_PROJECT_ID": "ddb5e3259e81494f9d083c917e173e5b"
       }
     }

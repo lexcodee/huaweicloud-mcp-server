@@ -16,7 +16,6 @@ def _isolate_env(monkeypatch):
         "HUAWEICLOUD_ACCESS_KEY_ID",
         "HUAWEICLOUD_SECRET_ACCESS_KEY",
         "HUAWEICLOUD_REGION",
-        "CODEARTS_REGION",
         "CODEARTS_DEFAULT_PROJECT_ID",
         "PIPELINE_MCP_LOG_LEVEL",
         "PIPELINE_MCP_LOG_FILE",

@@ -60,7 +60,7 @@ manager) and fill in real values:
 |-----------------------------------|-----------|-------------|
 | `HUAWEICLOUD_ACCESS_KEY_ID`       | yes       | IAM AK |
 | `HUAWEICLOUD_SECRET_ACCESS_KEY`   | yes       | IAM SK |
-| `CODEARTS_REGION`                 | yes       | CodeArts Pipeline region id (e.g. `af-south-1`, `cn-north-4`). **NOT interchangeable with `HUAWEICLOUD_REGION`** — they are different services with different region catalogues. |
+| `HUAWEICLOUD_REGION`               | yes       | Region id shared by all MCP servers (e.g. `af-south-1`, `cn-north-4`). |
 | `CODEARTS_DEFAULT_PROJECT_ID`     | no        | Default CodeArts project UUID. Used when a tool call omits `project_id`. |
 | `PIPELINE_MCP_LOG_LEVEL`          | no        | `INFO` (default) / `WARNING` / `DEBUG` |
 | `PIPELINE_MCP_LOG_FILE`           | no        | Optional rotating file log. stderr is always used. |
@@ -122,7 +122,7 @@ exec /usr/local/bin/codearts-pipeline-mcp-server "$@"
       "env": {
         "HUAWEICLOUD_ACCESS_KEY_ID": "AKIDxxxxxxxxxxxxxxxx",
         "HUAWEICLOUD_SECRET_ACCESS_KEY": "SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "CODEARTS_REGION": "af-south-1",
+        "HUAWEICLOUD_REGION": "af-south-1",
         "CODEARTS_DEFAULT_PROJECT_ID": "ddb5e3259e81494f9d083c917e173e5b"
       }
     }

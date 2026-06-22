@@ -15,7 +15,7 @@ SERVER_CMD = [sys.executable, "-m", "pipeline_mcp_server.server"]
 ENV_OVERRIDES = {
     "HUAWEICLOUD_ACCESS_KEY_ID": "AKIDFAKEFAKEFAKEFAKE",
     "HUAWEICLOUD_SECRET_ACCESS_KEY": "SKFAKE" + "X" * 34 + "FAKE",
-    "CODEARTS_REGION": "af-south-1",
+    "HUAWEICLOUD_REGION": "af-south-1",
     "CODEARTS_DEFAULT_PROJECT_ID": "ddb5e3259e81494f9d083c917e173e5b",
     "PYTHONPATH": "src",
     "PIPELINE_MCP_LOG_LEVEL": "WARNING",
@@ -26,6 +26,7 @@ EXPECTED_TOOLS = {
     "pipeline_run",
     "pipeline_update_info",
     "pipeline_set_status",
+    "pipeline_confirm_destructive",
 }
 
 

@@ -13,32 +13,19 @@ from pipeline_mcp_server.logging_setup import SecretMaskingFilter, setup_logging
 def test_load_settings_fails_fast_when_missing(monkeypatch, capsys):
     monkeypatch.delenv("HUAWEICLOUD_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("HUAWEICLOUD_SECRET_ACCESS_KEY", raising=False)
-    monkeypatch.delenv("CODEARTS_REGION", raising=False)
+    monkeypatch.delenv("HUAWEICLOUD_REGION", raising=False)
     with pytest.raises(SystemExit) as exc:
         load_settings()
     assert exc.value.code == 2
     captured = capsys.readouterr().err
     assert "missing required env vars" in captured
-    assert "CODEARTS_REGION" in captured
-
-
-def test_load_settings_does_not_fall_back_to_huaweicloud_region(monkeypatch, capsys):
-    """HUAWEICLOUD_REGION (used by the ECS server) is a different concept from
-    CODEARTS_REGION and MUST NOT silently substitute."""
-    monkeypatch.setenv("HUAWEICLOUD_ACCESS_KEY_ID", "AKID" + "X" * 16)
-    monkeypatch.setenv("HUAWEICLOUD_SECRET_ACCESS_KEY", "SK" + "Y" * 38)
-    monkeypatch.setenv("HUAWEICLOUD_REGION", "af-south-1")
-    monkeypatch.delenv("CODEARTS_REGION", raising=False)
-    with pytest.raises(SystemExit) as exc:
-        load_settings()
-    assert exc.value.code == 2
-    assert "CODEARTS_REGION" in capsys.readouterr().err
+    assert "HUAWEICLOUD_REGION" in captured
 
 
 def test_load_settings_happy(monkeypatch):
     monkeypatch.setenv("HUAWEICLOUD_ACCESS_KEY_ID", "AKID" + "X" * 16)
     monkeypatch.setenv("HUAWEICLOUD_SECRET_ACCESS_KEY", "SK" + "Y" * 38)
-    monkeypatch.setenv("CODEARTS_REGION", "af-south-1")
+    monkeypatch.setenv("HUAWEICLOUD_REGION", "af-south-1")
     monkeypatch.setenv("CODEARTS_DEFAULT_PROJECT_ID", "proj-1")
 
     s = load_settings()

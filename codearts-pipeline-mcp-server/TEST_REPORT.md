@@ -15,18 +15,18 @@ Test runner: pytest 9.1.1
 
 | Suite                                        | Tests | Pass | Notes |
 |----------------------------------------------|-------|------|-------|
-| tests/test_config_and_logging.py             | 4     | 4    | Fail-fast on missing env vars; secret masking on stderr/file |
+|| tests/test_config_and_logging.py             | 3     | 3    | Fail-fast on missing env vars; secret masking on stderr/file |
 | tests/test_definition_utils.py               | 14    | 14   | JSON-string parse/mutate/dump invariants; allow-list enforcement |
 | tests/test_query_tools.py                    | 4     | 4    | Compact list envelope; `definition` decoded; project_id resolution |
 | tests/test_run_and_lifecycle.py              | 5     | 5    | Default-config run; branch override; ban/unban URI routing; confirm gate |
 | tests/test_update_info_merge_logic.py        | 7     | 7    | **Read-modify-write merge correctness — see below** |
 | tests/smoke_stdio.py (E2E stdio handshake)   | 1     | 1    | All 6 tools advertised, schemas non-empty |
-| **Total**                                    | **35**| **35** | All green |
+|| **Total**                                    | **34**| **34** | All green |
 
 Run command:
 
 ```bash
-PYTHONPATH=src pytest tests/        # 34 in 0.22 s
+PYTHONPATH=src pytest tests/        # 33 in 0.22 s
 python3 tests/smoke_stdio.py        # < 1 s
 ```
 
@@ -111,7 +111,7 @@ This validates:
 ```
 $ codearts-pipeline-mcp-server </dev/null
 ERROR: codearts-pipeline-mcp-server: missing required env vars:
-HUAWEICLOUD_ACCESS_KEY_ID, HUAWEICLOUD_SECRET_ACCESS_KEY, CODEARTS_REGION
+HUAWEICLOUD_ACCESS_KEY_ID, HUAWEICLOUD_SECRET_ACCESS_KEY, HUAWEICLOUD_REGION
 exit: 2
 ```
 
@@ -171,6 +171,6 @@ console.
 | Unified `{ok, data\|error}` envelope                   | every tool test |
 | AK/SK never leaks to logs / responses                 | `test_setup_logging_writes_to_stderr_only`, `test_secret_masking_filter_replaces_known_secret` |
 | 30 s timeout, 2-3 retry policy on network errors      | `client._build_http_config`, `Settings.network_retries` |
-| Fail-fast on missing env vars                         | `test_load_settings_fails_fast_when_missing` (includes CODEARTS_REGION in error) |
-| HUAWEICLOUD_REGION does NOT substitute for CODEARTS_REGION | `test_load_settings_does_not_fall_back_to_huaweicloud_region` |
+| Fail-fast on missing env vars                         | `test_load_settings_fails_fast_when_missing` (includes HUAWEICLOUD_REGION in error) |
+| Region sourced from HUAWEICLOUD_REGION (shared with ECS/CTS) | `test_load_settings_happy` reads `HUAWEICLOUD_REGION` |
 | `project_id` optional → falls back to default         | `test_missing_project_id_when_no_default` and per-tool tests |

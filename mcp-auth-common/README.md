@@ -24,3 +24,15 @@ Why this package exists separately from the gateway:
    keeps the JWT verification logic in one place.
 2. The gateway itself uses the same `Identity` model when it parses incoming
    JWTs, so both sides agree on the shape that flows through `scope["mcp_identity"]`.
+
+Token issuance
+--------------
+The gateway ships a CLI for signing JWTs without an external IdP:
+
+```bash
+mcp-gateway token keygen                              # generate RSA key pair
+mcp-gateway token create --sub alice --roles admin    # sign a JWT
+mcp-gateway token verify --token "eyJ..."             # decode + verify
+```
+
+See `mcp-gateway/README.md` for full documentation.

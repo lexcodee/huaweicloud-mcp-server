@@ -14,7 +14,7 @@ from typing import Optional
 REQUIRED_VARS = (
     "HUAWEICLOUD_ACCESS_KEY_ID",
     "HUAWEICLOUD_SECRET_ACCESS_KEY",
-    "CODEARTS_REGION",
+    "HUAWEICLOUD_REGION",
 )
 
 
@@ -73,7 +73,7 @@ def load_settings() -> Settings:
     return Settings(
         access_key_id=os.environ["HUAWEICLOUD_ACCESS_KEY_ID"].strip(),
         secret_access_key=os.environ["HUAWEICLOUD_SECRET_ACCESS_KEY"].strip(),
-        region=os.environ["CODEARTS_REGION"].strip(),
+        region=os.environ["HUAWEICLOUD_REGION"].strip(),
         default_project_id=(os.environ.get("CODEARTS_DEFAULT_PROJECT_ID") or None),
         log_level=os.environ.get("PIPELINE_MCP_LOG_LEVEL", "INFO").upper(),
         log_file=os.environ.get("PIPELINE_MCP_LOG_FILE") or None,

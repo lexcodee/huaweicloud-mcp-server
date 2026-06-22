@@ -75,10 +75,16 @@ def build_app(
         # a ``ctx: Context`` parameter.
         routes.append(Mount(svc.mount_path, app=_ScopeBinderMiddleware(sse_app)))
         mounted.append((svc, instance))
-        log.info("mounted service=%s mount_path=%s module=%s", svc.name, svc.mount_path, svc.module)
+        log.info(
+            "service-mounted",
+            extra={"event": "service-mounted", "service": svc.name, "mount_path": svc.mount_path, "svc_module": svc.module},
+        )
 
     for skipped in manifest.skipped_services():
-        log.info("skipped service=%s reason=%s", skipped.name, skipped.skip_reason or "manifest:disabled")
+        log.info(
+            "service-skipped",
+            extra={"event": "service-skipped", "service": skipped.name, "reason": skipped.skip_reason or "manifest:disabled"},
+        )
 
     routes.append(Route("/healthz", _make_healthz(manifest), methods=["GET"]))
 
@@ -99,9 +105,12 @@ def build_app(
     )
 
     log.info(
-        "gateway ready: mounted=%s skipped=%s",
-        [s.name for s, _ in mounted],
-        [s.name for s in manifest.skipped_services()],
+        "gateway-ready",
+        extra={
+            "event": "gateway-ready",
+            "mounted": [s.name for s, _ in mounted],
+            "skipped": [s.name for s in manifest.skipped_services()],
+        },
     )
     return app
 
