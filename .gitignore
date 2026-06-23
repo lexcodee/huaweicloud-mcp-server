@@ -72,3 +72,4 @@ logs/
 htmlcov/
 .pytest_cache/
 .mypy_cache/
+_smoke_test.py

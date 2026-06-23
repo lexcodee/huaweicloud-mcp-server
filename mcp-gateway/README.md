@@ -1,15 +1,36 @@
 # MCP Gateway
 
-A single-process ASGI gateway that mounts multiple Huawei Cloud FastMCP servers
+A single-process ASGI gateway that mounts one or more Huawei Cloud FastMCP servers
 on one `uvicorn` port, with JWT authentication and path-level RBAC at the
 perimeter and tool-level fine-grained authorization inside each server.
 
+## Strategy 1 (default): single URL, single mount
+
+Agent connects to **one URL** and sees all tools in one list. Tool names carry
+a service prefix (e.g. `ecs_list_servers`, `pipeline_run`, `cts_search_traces`).
+
 ```
-https://example.com/ecs/sse         ← ECS lifecycle tools
-https://example.com/pipeline/sse    ← CodeArts Pipeline tools
-https://example.com/cts/sse         ← CTS audit trace tools
+https://example.com/hwc/sse         ← All enabled Huawei Cloud tools
 https://example.com/healthz         ← Liveness probe (no auth required)
 ```
+
+To add a new cloud service, just add its tool module to `huaweicloud_mcp` and
+append its name to `build_kwargs.enabled` in `manifest.yaml`. No Agent-side
+change needed.
+
+## Strategy 2 (future): multiple mount points
+
+When tool count exceeds ~50, or when different Agent roles need different tool
+subsets, split into multiple mounts:
+
+```
+https://example.com/compute/sse     ← ECS + EVS + VPC tools
+https://example.com/cicd/sse        ← Pipeline + CodeCheck tools
+https://example.com/audit/sse       ← CTS + CES tools
+```
+
+Each mount is a `ServiceConfig` entry in `manifest.yaml` pointing at the same
+factory (`huaweicloud_mcp.build_server`) with different `build_kwargs.enabled`.
 
 ## Architecture
 

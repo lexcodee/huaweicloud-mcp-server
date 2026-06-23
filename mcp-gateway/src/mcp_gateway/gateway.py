@@ -116,15 +116,38 @@ def build_app(
 
 
 def _resolve_fastmcp(svc: ServiceConfig) -> FastMCP:
-    """Dynamic ``module.attr`` lookup that gives a useful error if the symbol is missing."""
+    """Dynamic ``module.attr`` lookup that gives a useful error if the symbol is missing.
+
+    Two supported forms:
+      1. ``attr`` names a module-level FastMCP singleton — returned as-is.
+      2. ``attr`` names a callable (factory). The callable is invoked with
+         ``**svc.build_kwargs`` and must return a FastMCP instance. This is the
+         pattern used by the unified ``huaweicloud_mcp.build_server(enabled=...)``
+         factory so one Python package can be mounted multiple times with
+         different feature subsets.
+    """
     module = importlib.import_module(svc.module)
     instance = getattr(module, svc.attr, None)
     if instance is None:
         raise RuntimeError(
             f"service {svc.name!r}: module {svc.module!r} has no attribute {svc.attr!r}. "
-            f"Make sure the server module exposes the FastMCP instance — e.g. "
-            f"`from .server import mcp` in __init__.py."
+            f"Make sure the server module exposes the FastMCP instance or a factory — e.g. "
+            f"`from .server import mcp` (singleton) or `from .server import build_server` (factory)."
         )
+
+    # If ``attr`` is a callable AND we have build_kwargs (or it isn't already a
+    # FastMCP), treat it as a factory. We deliberately key on callable-ness so a
+    # FastMCP singleton (which is itself callable via __call__ in some versions)
+    # is still detected correctly by the isinstance check below.
+    if not isinstance(instance, FastMCP) and callable(instance):
+        try:
+            instance = instance(**svc.build_kwargs)
+        except TypeError as exc:
+            raise RuntimeError(
+                f"service {svc.name!r}: factory {svc.module}.{svc.attr} rejected "
+                f"build_kwargs={svc.build_kwargs!r}: {exc}"
+            ) from exc
+
     if not isinstance(instance, FastMCP):
         raise RuntimeError(
             f"service {svc.name!r}: attribute {svc.attr!r} is not a FastMCP instance "
@@ -134,16 +157,25 @@ def _resolve_fastmcp(svc: ServiceConfig) -> FastMCP:
 
 
 def _mount_one(svc: ServiceConfig, instance: FastMCP) -> ASGIApp:
-    """Build the sub-app with the prefix baked into the SSE endpoint callback.
+    """Build the SSE sub-app for this service.
 
-    ``sse_app(mount_path=...)`` is the supported public API as of
-    ``mcp`` 1.x. Internally it stores the prefix on
-    ``settings.mount_path`` and uses it when emitting the SSE
-    ``event: endpoint`` URI. Without it the URI would be bare
-    ``/messages/?session_id=...`` and POST traffic from the client would
-    miss the Mount prefix entirely.
+    We deliberately do NOT pass ``mount_path=svc.mount_path`` to ``sse_app``.
+    The current MCP SDK reads ``scope['root_path']`` inside ``connect_sse``
+    when constructing the ``event: endpoint`` URL, and Starlette's
+    ``Mount(svc.mount_path, app=...)`` already populates ``root_path``
+    correctly. Passing ``mount_path`` to ``sse_app`` on top of that causes
+    the prefix to be doubled (e.g. ``/hwc/hwc/messages/?session_id=...``),
+    which makes the client's POST land at a 404.
+
+    Historical note: older ``mcp`` SDK versions (< roughly 1.10) didn't read
+    ``root_path`` from scope, and the explicit ``mount_path`` argument was
+    the documented workaround for that mount-prefix bug. The current SDK
+    has the fix, so the workaround now causes the bug it was meant to
+    prevent — confirmed against ``mcp`` 1.x ``sse.py`` (``root_path =
+    scope.get("root_path", "")`` then ``full_message_path_for_client =
+    root_path.rstrip("/") + self._endpoint``).
     """
-    return instance.sse_app(mount_path=svc.mount_path)
+    return instance.sse_app()
 
 
 def _combined_lifespan_factory(

@@ -35,6 +35,10 @@ class ServiceConfig:
     name: str
     module: str
     attr: str = "mcp"
+    # When set, ``attr`` is treated as a callable (factory) and invoked with
+    # ``**build_kwargs`` to construct the FastMCP instance. When unset, ``attr``
+    # is treated as a module-level FastMCP singleton (legacy form).
+    build_kwargs: dict[str, Any] = field(default_factory=dict)
     mount_path: str = ""
     required_roles: list[str] = field(default_factory=list)
     enabled: bool = True
@@ -115,6 +119,7 @@ def apply_overrides(
             name=original.name,
             module=original.module,
             attr=original.attr,
+            build_kwargs=dict(original.build_kwargs),
             mount_path=original.mount_path,
             required_roles=list(original.required_roles),
             enabled=original.enabled,
@@ -151,6 +156,7 @@ def _parse_service(item: Any) -> ServiceConfig:
         name=str(item["name"]),
         module=str(item["module"]),
         attr=str(item.get("attr", "mcp")),
+        build_kwargs=dict(item.get("build_kwargs", {}) or {}),
         mount_path=str(item.get("mount_path", "")),
         required_roles=list(item.get("required_roles", []) or []),
         enabled=bool(item.get("enabled", True)),

@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# =====================================================================
-# MCP Gateway startup script
+# Strategy 1 deployment: single mount /hwc, all Huawei Cloud tools in one place.
 #
-# Usage:
-#   ./start.sh                  # 启动 manifest.yaml 中 enabled=true 的所有服务
-#   ./start.sh ecs,pipeline     # 只挂载 ecs 和 pipeline
-#   ./start.sh --port 9000      # 自定义端口
-#   ./start.sh ecs --port 9000  # 组合：只挂载 ecs + 自定义端口
+# Starts the mcp-gateway with the unified manifest. Agents connect to
+# http://127.0.0.1:8080/hwc/sse and see all enabled tools (ecs_*, pipeline_*,
+# cts_*) in one list.
 #
-# 自动加载 workspace 根目录的 .env（包含全部共享凭证和各服务配置）。
-# =====================================================================
+# Env vars consumed via .env:
+#   HUAWEICLOUD_AK / SK / PROJECT_ID / REGION  (passed to huaweicloud_mcp)
+#   MCP_JWT_PUBLIC_KEY                          (gateway JWT)
+#   MCP_GATEWAY_AUTH                            (set to "disabled" for dev)
+#   MCP_GATEWAY_PORT                            (default 8080)
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
-# Load the unified .env from the workspace root.
 if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -23,16 +21,9 @@ if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   set +a
 fi
 
-ARGS=()
-if [[ $# -gt 0 && "$1" != --* ]]; then
-  # First non-flag argument is the service list.
-  ARGS+=("--enable" "$1")
-  shift
-fi
-
-# Remaining arguments pass through to mcp-gateway CLI.
-# Supports: --port, --host, --log-level, --manifest, --disable, etc.
-# Default --manifest points to the root manifest.yaml (set via MCP_GATEWAY_MANIFEST
-# in .env, or hardcoded here as a fallback).
-ARGS+=("--manifest" "${SCRIPT_DIR}/manifest.yaml")
-exec uv run mcp-gateway "${ARGS[@]}" "$@"
+exec uv run mcp-gateway serve \
+  --manifest "${SCRIPT_DIR}/manifest.yaml" \
+  --port "${MCP_GATEWAY_PORT:-8080}" \
+  --host "${MCP_GATEWAY_HOST:-127.0.0.1}" \
+  --log-level "${MCP_GATEWAY_LOG_LEVEL:-info}" \
+  "$@"

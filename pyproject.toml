@@ -1,5 +1,6 @@
 [tool.uv.workspace]
 members = [
+    "huaweicloud-mcp-server",
     "ecs-mcp-server",
     "codearts-pipeline-mcp-server",
     "cts-mcp-server",
