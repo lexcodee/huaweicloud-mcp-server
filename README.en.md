@@ -7,7 +7,7 @@ access every enabled cloud service tool. Enable only the services you need,
 secure production with JWT auth, and add new cloud services with **zero
 Agent-side config change**.
 
-**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs)
+**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine)
 **Coming soon**: OBS (object storage), RDS (relational DB), VPC (virtual network)…
 
 ```
@@ -47,7 +47,8 @@ huaweicloud-mcp-server/          # ← workspace root
 │       └── services/
 │           ├── ecs/               ← 8 tools (list/get/power/delete/resize)
 │           ├── pipeline/          ← 6 tools (list/get/run/update/toggle)
-│           └── cts/               ← 2 tools (search/get audit traces)
+│           ├── cts/               ← 2 tools (search/get audit traces)
+│           └── cce/               ← 6 tools (query clusters/nodes/nodepools, update nodepool, get_job)
 │
 ├── mcp-auth-common/               ← Shared auth (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
@@ -66,7 +67,7 @@ huaweicloud_mcp/
 ├── client.py          # SDK client factory: get_client("ecs", settings) — lru_cached
 ├── errors.py          # ToolError, wrap_tool decorator, PendingActions (two-phase commit)
 ├── logging_setup.py   # SecretMaskingFilter + setup_logging()
-├── server.py          # build_server(enabled={"ecs","pipeline","cts"}) → FastMCP
+├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce"}) → FastMCP
 ├── app.py             # ASGI entrypoint for SSE/HTTP (with keep-alive middleware)
 └── services/
     ├── ecs/
@@ -97,6 +98,14 @@ huaweicloud_mcp/
         └── tools/
             ├── search.py     # search_traces
             └── detail.py     # get_trace_detail
+    └── cce/
+        ├── make_tools.py
+        ├── models.py
+        ├── serializers.py
+        └── tools/
+            ├── query.py      # query_clusters, query_nodes, query_nodepools
+            ├── update.py     # update_nodepool, confirm_destructive
+            └── job.py        # get_job
 ```
 
 ### Shared infrastructure
@@ -104,13 +113,13 @@ huaweicloud_mcp/
 | Module | Purpose |
 |--------|---------|
 | `config.py` | Single `Settings` dataclass — AK/SK/region/project_id/timezone. `load_settings()` reads from env, validates required vars, exits fast on missing. |
-| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS clients with shared HttpConfig (timeout, retries). |
+| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE clients with shared HttpConfig (timeout, retries). |
 | `errors.py` | `ToolError` exception + `wrap_tool` decorator that catches SDK errors, normalizes them to `{ok: false, error: {...}}` envelopes, and logs structured events. `PendingActions` implements the two-phase commit for destructive ops. |
 | `logging_setup.py` | `SecretMaskingFilter` redacts AK/SK in log output. `setup_logging()` configures stderr-only (stdio-safe) or file logging. |
 
 ---
 
-## MCP tools (16 total)
+## MCP tools (21 total)
 
 ### ECS — Cloud server lifecycle management (8 tools)
 
@@ -138,10 +147,21 @@ huaweicloud_mcp/
 
 ### CTS — Audit log search (2 tools)
 
-| Tool | Description | Min role |
+|| Tool | Description | Min role |
 |------|-------------|----------|
 | `cts_search_traces` | Search audit events (7-day window) | readonly |
 | `cts_get_trace_detail` | Full masked request/response body | readonly |
+
+### CCE — Cloud container engine management (6 tools)
+
+|| Tool | Description | Min role |
+|------|-------------|----------|
+| `cce_query_clusters` | List clusters / get single cluster detail | readonly |
+| `cce_query_nodes` | List cluster nodes / get single node detail | readonly |
+| `cce_query_nodepools` | List node pools / get single pool detail | readonly |
+| `cce_update_nodepool` | ⚠ Resize node pool desired count (scale-down requires two-phase confirm; DefaultPool scaling not supported) | operator |
+| `cce_get_job` | Poll async job status (cluster create/upgrade/node-pool resize etc.) | readonly |
+| `cce_confirm_destructive` | Execute pending destructive op (scale-down) | — |
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 
@@ -149,7 +169,8 @@ huaweicloud_mcp/
 
 ## Two-phase commit (destructive operations)
 
-Destructive tools (stop, reboot, delete, resize, disable pipeline, update pipeline)
+Destructive tools (stop, reboot, delete, resize, disable pipeline, update pipeline,
+scale-down node pool)
 follow a two-phase commit pattern to prevent accidental execution:
 
 ```
@@ -178,17 +199,19 @@ If the approval ID expires, re-issue the original call to get a fresh one.
                           │                                      │
                           │  Single mount:                       │
                           │    /hwc  → build_server(             │
-                          │             enabled=[ecs,pipeline,cts]│
+                          │             enabled=[ecs,pipeline,cts│
+                          │                        ,cce]         │
                           │           )                           │
                           └──────────────────────────────────────┘
                                     │
                                     ▼
                           ┌──────────────────┐
                           │  Unified FastMCP  │
-                          │  16 tools:        │
+                          │  21 tools:        │
                           │    ecs_* (8)      │
                           │    pipeline_* (6) │
                           │    cts_* (2)      │
+                          │    cce_* (5+1)    │
                           └──────────────────┘
 ```
 
@@ -309,7 +332,7 @@ curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
 The unified server can run directly via stdio — no gateway or JWT needed:
 
 ```bash
-# All services (16 tools)
+# All services (21 tools)
 huaweicloud-mcp-server
 
 # Subset only
@@ -361,7 +384,7 @@ mcp_servers:
     headers:
       Authorization: Bearer ***rmes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 16
+#   ✓ Tools discovered: 21
 ```
 
 ### Claude Code
@@ -571,7 +594,7 @@ Startup logs clearly print mounted/skipped services and skip reasons.
 | `MCP_TRANSPORT` | no | `stdio` | `stdio` / `sse` / `streamable-http` |
 | `MCP_HOST` | no | `127.0.0.1` | SSE/HTTP bind host |
 | `MCP_PORT` | no | `8000` | SSE/HTTP bind port |
-| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts` | Comma-separated service subset |
+| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce` | Comma-separated service subset |
 | `HUAWEICLOUD_MCP_LOG_LEVEL` | no | `INFO` | Log level |
 | `HUAWEICLOUD_MCP_LOG_FILE` | no | stderr | Log file path |
 | `HUAWEICLOUD_MCP_HTTP_TIMEOUT` | no | `30` | SDK HTTP timeout (seconds) |
@@ -617,13 +640,13 @@ uv sync
 ### Run tests
 
 ```bash
-# Unified server (152 tests)
+# Unified server (182 tests)
 uv run pytest huaweicloud-mcp-server/tests/ -q
 
-# Gateway (111 tests)
+# Gateway (120 tests)
 uv run pytest mcp-gateway/tests/ -q
 
-# All (263 tests)
+# All (302 tests)
 uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 ```
 
@@ -634,11 +657,12 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 | ECS tools | 52 | list/get/power/delete/resize/confirm/job |
 | Pipeline tools | 48 | list/get/run/update/toggle/confirm |
 | CTS tools | 36 | search/detail + time_utils + mask_utils + 7-day window |
+| CCE tools | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool rejection |
 | Config / client | 16 | Settings validation, client factory, caching |
 | Gateway auth | 10 | JWT verify + RBAC + Identity injection + permanent token |
 | Gateway dev mode | 10 | No JWT / loopback / open / disabled |
 | Structured logging | 9 | JSON format / extra fields / audit events |
-| Tool-level RBAC | 14 | Role hierarchy + 3-service auth matrix |
+| Tool-level RBAC | 14 | Role hierarchy + 4-service auth matrix |
 | Manifest override | 9 | 3-layer override + skip reasons + dedup |
 | Factory mode | 9 | build_kwargs parsing + factory call + errors |
 | SSE prefix regression | 1 | No double /hwc/hwc in endpoint event |

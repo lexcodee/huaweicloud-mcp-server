@@ -4,7 +4,7 @@
 
 一个 MCP Server 覆盖全部华为云服务。Agent 只需对接 **一个 URL**，即可访问所有已启用的云服务工具。按需启动服务子集，JWT 鉴权保障生产安全，新增云服务无需 Agent 侧任何配置变更。
 
-**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）
+**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）、CCE（云容器引擎）
 **开发中**：OBS（对象存储）、RDS（关系数据库）、VPC（虚拟网络）…
 
 ```
@@ -44,7 +44,8 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 │       └── services/
 │           ├── ecs/               ← 8 工具 (list/get/power/delete/resize)
 │           ├── pipeline/          ← 6 工具 (list/get/run/update/toggle)
-│           └── cts/               ← 2 工具 (search/get 审计事件)
+│           ├── cts/               ← 2 工具 (search/get 审计事件)
+│           └── cce/               ← 6 工具 (query clusters/nodes/nodepools, update nodepool, get_job)
 │
 ├── mcp-auth-common/               ← 共享鉴权库 (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
@@ -63,7 +64,7 @@ huaweicloud_mcp/
 ├── client.py          # SDK 客户端工厂: get_client("ecs", settings) — lru_cached
 ├── errors.py          # ToolError, wrap_tool 装饰器, PendingActions（两阶段提交）
 ├── logging_setup.py   # SecretMaskingFilter + setup_logging()
-├── server.py          # build_server(enabled={"ecs","pipeline","cts"}) → FastMCP
+├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce"}) → FastMCP
 ├── app.py             # ASGI 入口（SSE/HTTP，含 keep-alive 中间件）
 └── services/
     ├── ecs/
@@ -94,6 +95,14 @@ huaweicloud_mcp/
         └── tools/
             ├── search.py     # search_traces
             └── detail.py     # get_trace_detail
+    └── cce/
+        ├── make_tools.py
+        ├── models.py
+        ├── serializers.py
+        └── tools/
+            ├── query.py      # query_clusters, query_nodes, query_nodepools
+            ├── update.py     # update_nodepool, confirm_destructive
+            └── job.py        # get_job
 ```
 
 ### 共享基础设施
@@ -101,13 +110,13 @@ huaweicloud_mcp/
 | 模块 | 用途 |
 |------|------|
 | `config.py` | 单一 `Settings` dataclass — AK/SK/region/project_id/timezone。`load_settings()` 从环境变量读取，校验必需项，缺失时快速退出。 |
-| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS 共用一个工厂，共享 HttpConfig（超时、重试）。 |
+| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS、CCE 共用一个工厂，共享 HttpConfig（超时、重试）。 |
 | `errors.py` | `ToolError` 异常 + `wrap_tool` 装饰器：捕获 SDK 错误，标准化为 `{ok: false, error: {...}}` 信封，记录结构化事件。`PendingActions` 实现两阶段提交。 |
 | `logging_setup.py` | `SecretMaskingFilter` 在日志中脱敏 AK/SK。`setup_logging()` 配置仅 stderr（stdio 安全）或文件日志。 |
 
 ---
 
-## MCP 工具一览（16 个）
+## MCP 工具一览（21 个）
 
 ### ECS — 云主机生命周期管理（8 个）
 
@@ -135,10 +144,21 @@ huaweicloud_mcp/
 
 ### CTS — 审计日志检索（2 个）
 
-| 工具 | 说明 | 最低角色 |
+|| 工具 | 说明 | 最低角色 |
 |------|------|----------|
 | `cts_search_traces` | 按时间 + 条件搜索审计事件（7 天窗口） | readonly |
 | `cts_get_trace_detail` | 查看单条事件的完整请求/响应体（敏感值脱敏） | readonly |
+
+### CCE — 云容器引擎管理（6 个）
+
+|| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `cce_query_clusters` | 列出集群 / 查看单个集群详情 | readonly |
+| `cce_query_nodes` | 列出集群节点 / 查看单个节点详情 | readonly |
+| `cce_query_nodepools` | 列出节点池 / 查看单个节点池详情 | readonly |
+| `cce_update_nodepool` | ⚠ 调整节点池期望节点数（缩容需两阶段确认；DefaultPool 不支持缩放） | operator |
+| `cce_get_job` | 查询异步任务状态（集群创建/升级/节点池缩放等） | readonly |
+| `cce_confirm_destructive` | 确认执行待定的破坏性操作（缩容） | — |
 
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 
@@ -146,7 +166,7 @@ huaweicloud_mcp/
 
 ## 两阶段提交（破坏性操作）
 
-破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线）遵循两阶段提交模式，防止误操作：
+破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线、缩容节点池）遵循两阶段提交模式，防止误操作：
 
 ```
 阶段 1: 工具调用返回预览 + approval_id（TTL 120 秒）
@@ -174,17 +194,19 @@ huaweicloud_mcp/
                           │                                      │
                           │  单挂载点：                           │
                           │    /hwc  → build_server(             │
-                          │             enabled=[ecs,pipeline,cts]│
+                          │             enabled=[ecs,pipeline,cts│
+                          │                        ,cce]         │
                           │           )                           │
                           └──────────────────────────────────────┘
                                     │
                                     ▼
                           ┌──────────────────┐
                           │  统一 FastMCP     │
-                          │  16 个工具：      │
+                          │  21 个工具：      │
                           │    ecs_* (8)      │
                           │    pipeline_* (6) │
                           │    cts_* (2)      │
+                          │    cce_* (5+1)    │
                           └──────────────────┘
 ```
 
@@ -312,7 +334,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/hwc/sse
 统一 Server 可直接通过 stdio 运行，无需网关或 JWT：
 
 ```bash
-# 全部服务（16 个工具）
+# 全部服务（21 个工具）
 huaweicloud-mcp-server
 
 # 仅启用子集
@@ -369,7 +391,7 @@ mcp_servers:
 ```bash
 hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 16
+#   ✓ Tools discovered: 21
 ```
 
 ### Claude Code
@@ -576,7 +598,7 @@ ExecStart=/opt/mcp-servers/start.sh \
 | `MCP_TRANSPORT` | 否 | `stdio` | `stdio` / `sse` / `streamable-http` |
 | `MCP_HOST` | 否 | `127.0.0.1` | SSE/HTTP 绑定地址 |
 | `MCP_PORT` | 否 | `8000` | SSE/HTTP 绑定端口 |
-| `MCP_ENABLED_SERVICES` | 否 | `ecs,pipeline,cts` | 逗号分隔的服务子集 |
+| `MCP_ENABLED_SERVICES` | 否 | `ecs,pipeline,cts,cce` | 逗号分隔的服务子集 |
 | `HUAWEICLOUD_MCP_LOG_LEVEL` | 否 | `INFO` | 日志级别 |
 | `HUAWEICLOUD_MCP_LOG_FILE` | 否 | stderr | 日志文件路径 |
 | `HUAWEICLOUD_MCP_HTTP_TIMEOUT` | 否 | `30` | SDK HTTP 超时（秒） |
@@ -622,28 +644,29 @@ uv sync
 ### 运行测试
 
 ```bash
-# 统一 Server（152 个测试）
+# 统一 Server（182 个测试）
 uv run pytest huaweicloud-mcp-server/tests/ -q
 
-# 网关（111 个测试）
+# 网关（120 个测试）
 uv run pytest mcp-gateway/tests/ -q
 
-# 全部（263 个测试）
+# 全部（302 个测试）
 uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 ```
 
 ### 测试结构
 
-| 类别 | 数量 | 覆盖内容 |
+|| 类别 | 数量 | 覆盖内容 |
 |------|------|----------|
 | ECS 工具 | 52 | list/get/power/delete/resize/confirm/job |
 | Pipeline 工具 | 48 | list/get/run/update/toggle/confirm |
 | CTS 工具 | 36 | search/detail + time_utils + mask_utils + 7 天窗口 |
+| CCE 工具 | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool 拒绝 |
 | 配置 / 客户端 | 16 | Settings 校验、客户端工厂、缓存 |
 | 网关鉴权 | 10 | JWT 验签 + RBAC + Identity 注入 + 永久 token |
 | 网关 dev 模式 | 10 | 免 JWT / loopback / open / disabled |
 | 结构化日志 | 9 | JSON 格式 / extra 字段 / 审计事件 |
-| 工具级 RBAC | 14 | 角色层级 + 三服务授权矩阵 |
+| 工具级 RBAC | 14 | 角色层级 + 四服务授权矩阵 |
 | Manifest 覆盖 | 9 | 三层覆盖 + 跳过原因 + 去重 |
 | 工厂模式 | 9 | build_kwargs 解析 + 工厂调用 + 异常 |
 | SSE 前缀回归 | 1 | 无 /hwc/hwc 双前缀 |
