@@ -1,17 +1,29 @@
-# Huawei Cloud MCP Server — Monorepo
+# Huawei Cloud MCP Server
 
 **English** | [中文](README.md)
 
-A [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) monorepo
-containing a **unified** Huawei Cloud MCP server and an ASGI gateway that
-mounts it on a single URL with JWT authentication. Ships with ECS, CodeArts
-Pipeline, and CTS; additional services can be added with **zero Agent-side
-config change**.
+One MCP Server for all Huawei Cloud services. Agents connect to **one URL** and
+access every enabled cloud service tool. Enable only the services you need,
+secure production with JWT auth, and add new cloud services with **zero
+Agent-side config change**.
+
+**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs)
+**Coming soon**: OBS (object storage), RDS (relational DB), VPC (virtual network)…
 
 ```
-https://example.com/hwc/sse    ← All Huawei Cloud tools (ecs_*, pipeline_*, cts_*, …)
+https://example.com/hwc/sse    ← All Huawei Cloud tools (ecs_*, pipeline_*, cts_*, obs_*, …)
 https://example.com/healthz    ← Gateway health (no auth)
 ```
+
+**Key design**:
+
+| Feature | Description |
+|---------|-------------|
+| Single URL | Agent configures one MCP server entry, forever |
+| On-demand enable | `MCP_ENABLED_SERVICES=ecs,pipeline` loads only what you need |
+| JWT auth | RS256 verification + role RBAC for production; no auth for local dev |
+| Two-phase commit | Destructive ops (delete/stop/resize) require explicit user approval |
+| Zero-config growth | New cloud services are server-side only, Agent is unaware |
 
 ## Project structure
 

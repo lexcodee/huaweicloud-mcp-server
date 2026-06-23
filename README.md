@@ -1,13 +1,26 @@
-# 华为云 MCP Server — Monorepo
+# 华为云 MCP Server
 
 [English](README.en.md) | **中文**
 
-基于 [uv workspace](https://docs.astral.sh/uv/concepts/workspaces/) 的 monorepo，包含**统一**的华为云 MCP Server 和 ASGI 网关（单 URL 挂载 + JWT 鉴权）。内置 ECS、CodeArts Pipeline、CTS 三个云服务；新增云服务**无需 Agent 侧任何配置变更**。
+一个 MCP Server 覆盖全部华为云服务。Agent 只需对接 **一个 URL**，即可访问所有已启用的云服务工具。按需启动服务子集，JWT 鉴权保障生产安全，新增云服务无需 Agent 侧任何配置变更。
+
+**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）
+**开发中**：OBS（对象存储）、RDS（关系数据库）、VPC（虚拟网络）…
 
 ```
-https://example.com/hwc/sse    ← 全部华为云工具 (ecs_*, pipeline_*, cts_*, …)
+https://example.com/hwc/sse    ← 全部华为云工具 (ecs_*, pipeline_*, cts_*, obs_*, …)
 https://example.com/healthz    ← 网关探活（免鉴权）
 ```
+
+**核心设计**：
+
+| 特性 | 说明 |
+|------|------|
+| 单 URL 对接 | Agent 配置一个 MCP Server 条目，永久不变 |
+| 按需启用 | `MCP_ENABLED_SERVICES=ecs,pipeline` 仅加载所需服务 |
+| JWT 鉴权 | 生产环境 RS256 签验 + 角色 RBAC；本地开发免鉴权 |
+| 两阶段提交 | 破坏性操作（删除/关机/变更规格）需用户显式确认 |
+| 零配置扩展 | 新增云服务只改服务端，Agent 无感知 |
 
 ## 项目结构
 

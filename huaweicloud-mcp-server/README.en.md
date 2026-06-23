@@ -2,13 +2,13 @@
 
 **English** | [中文](README.md)
 
-Unified Huawei Cloud MCP Server — combines **ECS**, **CodeArts Pipeline**, and
-**CTS** into a single package with shared infrastructure (config, auth, logging,
-error handling) and per-service tool modules.
+One MCP Server for all Huawei Cloud services. Agents connect to **one URL** and
+access every enabled cloud service tool. Enable only the services you need,
+secure production with JWT auth, and add new cloud services with **zero
+Agent-side config change**.
 
-Replaces the three former standalone packages (`ecs-mcp-server`,
-`codearts-pipeline-mcp-server`, `cts-mcp-server`) with one codebase, one set of
-credentials, and one FastMCP instance.
+**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs)
+**Coming soon**: OBS (object storage), RDS (relational DB), VPC (virtual network)…
 
 ---
 

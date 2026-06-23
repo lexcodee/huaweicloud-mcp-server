@@ -2,9 +2,10 @@
 
 [English](README.en.md) | **中文**
 
-统一华为云 MCP Server — 将 **ECS**、**CodeArts Pipeline**、**CTS** 合并为单一包，共享基础设施（配置、鉴权、日志、错误处理）和按服务划分的工具模块。
+一个 MCP Server 覆盖全部华为云服务。Agent 只需对接 **一个 URL**，即可访问所有已启用的云服务工具。按需启动服务子集，JWT 鉴权保障生产安全，新增云服务无需 Agent 侧任何配置变更。
 
-取代原有的三个独立包（`ecs-mcp-server`、`codearts-pipeline-mcp-server`、`cts-mcp-server`），统一代码库、统一凭证、单一 FastMCP 实例。
+**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）
+**开发中**：OBS（对象存储）、RDS（关系数据库）、VPC（虚拟网络）…
 
 ---
 
