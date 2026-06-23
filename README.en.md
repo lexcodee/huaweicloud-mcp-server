@@ -147,14 +147,14 @@ huaweicloud_mcp/
 
 ### CTS — Audit log search (2 tools)
 
-|| Tool | Description | Min role |
+| Tool | Description | Min role |
 |------|-------------|----------|
 | `cts_search_traces` | Search audit events (7-day window) | readonly |
 | `cts_get_trace_detail` | Full masked request/response body | readonly |
 
 ### CCE — Cloud container engine management (6 tools)
 
-|| Tool | Description | Min role |
+| Tool | Description | Min role |
 |------|-------------|----------|
 | `cce_query_clusters` | List clusters / get single cluster detail | readonly |
 | `cce_query_nodes` | List cluster nodes / get single node detail | readonly |

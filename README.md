@@ -144,14 +144,14 @@ huaweicloud_mcp/
 
 ### CTS — 审计日志检索（2 个）
 
-|| 工具 | 说明 | 最低角色 |
+| 工具 | 说明 | 最低角色 |
 |------|------|----------|
 | `cts_search_traces` | 按时间 + 条件搜索审计事件（7 天窗口） | readonly |
 | `cts_get_trace_detail` | 查看单条事件的完整请求/响应体（敏感值脱敏） | readonly |
 
 ### CCE — 云容器引擎管理（6 个）
 
-|| 工具 | 说明 | 最低角色 |
+| 工具 | 说明 | 最低角色 |
 |------|------|----------|
 | `cce_query_clusters` | 列出集群 / 查看单个集群详情 | readonly |
 | `cce_query_nodes` | 列出集群节点 / 查看单个节点详情 | readonly |
@@ -656,7 +656,7 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 
 ### 测试结构
 
-|| 类别 | 数量 | 覆盖内容 |
+| 类别 | 数量 | 覆盖内容 |
 |------|------|----------|
 | ECS 工具 | 52 | list/get/power/delete/resize/confirm/job |
 | Pipeline 工具 | 48 | list/get/run/update/toggle/confirm |
