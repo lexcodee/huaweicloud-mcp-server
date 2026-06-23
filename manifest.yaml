@@ -34,7 +34,7 @@ services:
     module: huaweicloud_mcp
     attr: build_server
     build_kwargs:
-      enabled: [ecs, pipeline, cts]
+      enabled: [ecs, pipeline, cts, cce]
     mount_path: /hwc
     # Path-level (coarse) RBAC. Fine-grained per-tool checks (start vs
     # delete) live inside the tool implementations themselves.

@@ -647,30 +647,6 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 
 ---
 
-## Migration from standalone packages
-
-The three original packages (`ecs-mcp-server`, `codearts-pipeline-mcp-server`,
-`cts-mcp-server`) have been replaced by the unified package:
-
-| Before (3 packages) | After (1 package) |
-|---------------------|-------------------|
-| `ecs_mcp_server.config.Settings` | `huaweicloud_mcp.config.Settings` |
-| `ecs_mcp_server.tools.query` | `huaweicloud_mcp.services.ecs.tools.query` |
-| `pipeline_mcp_server.X` | `huaweicloud_mcp.services.pipeline.X` |
-| `cts_mcp_server.X` | `huaweicloud_mcp.services.cts.X` |
-| 3 × separate AK/SK config | 1 × unified Settings |
-| 3 × duplicate error wrapping | 1 × shared `wrap_tool` + `ToolError` |
-| 3 × separate client factories | 1 × `get_client(service, settings)` |
-| 3 × manifest entries with 3 modules | 1 × manifest entry with `build_kwargs` |
-
-### Import depth convention
-
-- Top-level modules (`config`, `errors`, `client`, `logging_setup`): imported via relative `.` or `..`
-- Service-level modules (`models`, `serializers`, `make_tools`): use `...` (3 dots) to reach top-level package
-- Tool modules (under `services/{svc}/tools/`): use `....` (4 dots) to reach top-level package
-
----
-
 ## License
 
 MIT

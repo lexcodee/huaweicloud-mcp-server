@@ -178,6 +178,33 @@ class TestCreate:
         assert rc == 0
         assert "unknown roles" in capsys.readouterr().err.lower()
 
+    def test_create_permanent_token_no_exp(self, key_pair, capsys):
+        """--ttl=0 omits exp claim → permanent token."""
+        priv, pub = key_pair
+        rc = cmd_create(_create_args(str(priv), ttl=0))
+        assert rc == 0
+
+        token = capsys.readouterr().out.strip()
+        pub_text = pub.read_text()
+        payload = jwt.decode(token, pub_text, algorithms=["RS256"], options={"verify_exp": False})
+        assert payload["sub"] == "alice"
+        assert "exp" not in payload
+
+    def test_create_permanent_token_json_format(self, key_pair, capsys):
+        """--ttl=0 with --format=json shows exp=null, expires_at='permanent'."""
+        priv, pub = key_pair
+        rc = cmd_create(_create_args(str(priv), ttl=0, fmt="json"))
+        assert rc == 0
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["exp"] is None
+        assert output["expires_at"] == "permanent"
+
+        # Embedded token should have no exp claim
+        pub_text = pub.read_text()
+        payload = jwt.decode(output["token"], pub_text, algorithms=["RS256"], options={"verify_exp": False})
+        assert "exp" not in payload
+
 
 class TestVerify:
     def test_verify_valid_token(self, tmp_path: Path, capsys):
@@ -237,6 +264,25 @@ class TestVerify:
         assert rc == 1
         assert "not found" in capsys.readouterr().err
 
+    def test_verify_permanent_token(self, tmp_path: Path, capsys):
+        """Verify should accept a token with no exp claim."""
+        kg = _keygen_args(tmp_path)
+        cmd_keygen(kg)
+        capsys.readouterr()
+        priv_text = Path(kg.private_key).read_text()
+
+        token = jwt.encode(
+            {"sub": "permanent-bot", "roles": ["admin"], "iss": "mcp-gateway", "iat": int(time.time())},
+            priv_text, algorithm="RS256",
+        )
+
+        rc = cmd_verify(_verify_args(kg.public_key, token))
+        assert rc == 0
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["sub"] == "permanent-bot"
+        assert "exp" not in output or output.get("exp") is None
+
 
 class TestEndToEnd:
     def test_round_trip(self, tmp_path: Path, capsys):
@@ -259,3 +305,22 @@ class TestEndToEnd:
         assert verify_output["sub"] == "devops-bot"
         assert verify_output["roles"] == ["operator", "readonly"]
         assert verify_output["tenant"] == "proj-xyz"
+
+    def test_round_trip_permanent(self, tmp_path: Path, capsys):
+        """keygen → create --ttl=0 → verify: permanent token round-trip."""
+        priv = tmp_path / "jwt-private.pem"
+        pub = tmp_path / "jwt-public.pem"
+
+        assert cmd_keygen(_keygen_args(tmp_path)) == 0
+        capsys.readouterr()
+
+        assert cmd_create(_create_args(str(priv), sub="permanent-bot", roles="admin", ttl=0, fmt="json")) == 0
+        create_output = json.loads(capsys.readouterr().out)
+        token = create_output["token"]
+        assert create_output["exp"] is None
+        assert create_output["expires_at"] == "permanent"
+
+        assert cmd_verify(_verify_args(str(pub), token)) == 0
+        verify_output = json.loads(capsys.readouterr().out)
+        assert verify_output["sub"] == "permanent-bot"
+        assert "exp" not in verify_output

@@ -25,6 +25,11 @@ try:
 except Exception:  # pragma: no cover — only happens when SDK absent
     hwc_exc = None  # type: ignore
 
+try:
+    from mcp_auth_common.errors import AuthError as _AuthError
+except Exception:  # pragma: no cover — mcp_auth_common absent during isolated tests
+    _AuthError = None  # type: ignore
+
 log = logging.getLogger("huaweicloud_mcp.tools")
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -133,6 +138,23 @@ def wrap_tool(func: F) -> F:
             }
 
         except Exception as e:  # noqa: BLE001
+            # AuthError from require_role → FORBIDDEN / UNAUTHORIZED
+            if _AuthError is not None and isinstance(e, _AuthError):
+                ms = int((time.monotonic() - started) * 1000)
+                code = "FORBIDDEN" if e.status == 403 else "UNAUTHORIZED"
+                log.warning(
+                    "tool.auth_err name=%s call_id=%s duration_ms=%d status=%d reason=%s",
+                    tool_name, call_id, ms, e.status, e.reason,
+                )
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": code,
+                        "message": e.reason,
+                        "status_code": e.status,
+                    },
+                }
+
             # Inspect for SDK-native exception by attribute shape.
             if hwc_exc is not None and isinstance(e, hwc_exc.ClientRequestException):
                 ms = int((time.monotonic() - started) * 1000)

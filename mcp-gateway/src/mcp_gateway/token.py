@@ -113,14 +113,16 @@ def cmd_create(args: argparse.Namespace) -> int:
     # Build payload
     now = time.time()
     iat = int(now)
-    exp = iat + args.ttl
     payload: dict = {
         "sub": args.sub,
         "roles": roles,
         "iss": args.issuer,
         "iat": iat,
-        "exp": exp,
     }
+    # --ttl=0 means permanent: omit exp so the token never expires.
+    permanent = args.ttl == 0
+    if not permanent:
+        payload["exp"] = iat + args.ttl
     if args.tenant:
         payload["tenant"] = args.tenant
     if args.audience:
@@ -131,16 +133,22 @@ def cmd_create(args: argparse.Namespace) -> int:
 
     # Output
     if args.format == "json":
-        expires_at = datetime.datetime.fromtimestamp(exp, tz=datetime.timezone.utc).isoformat()
-        output = {
+        output: dict = {
             "token": token,
             "sub": args.sub,
             "roles": roles,
             "iss": args.issuer,
             "iat": iat,
-            "exp": exp,
-            "expires_at": expires_at,
         }
+        if permanent:
+            output["exp"] = None
+            output["expires_at"] = "permanent"
+        else:
+            exp = payload["exp"]
+            output["exp"] = exp
+            output["expires_at"] = datetime.datetime.fromtimestamp(
+                exp, tz=datetime.timezone.utc
+            ).isoformat()
         if args.tenant:
             output["tenant"] = args.tenant
         if args.audience:
@@ -182,10 +190,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
             issuer=args.issuer,
             audience=args.audience or None,
             leeway=args.leeway,
+            options={"verify_exp": False},
         )
-    except jwt.ExpiredSignatureError:
-        print("Error: token has expired", file=sys.stderr)
-        return 1
+        # Manual exp check: permanent tokens (no exp) are ok; expired ones are not.
+        if "exp" in payload and payload["exp"] < time.time() - args.leeway:
+            print("Error: token has expired", file=sys.stderr)
+            return 1
     except jwt.InvalidIssuerError as exc:
         print(f"Error: invalid issuer — {exc}", file=sys.stderr)
         return 1
@@ -246,7 +256,7 @@ def add_token_subcommands(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument("--tenant", default="", help="Tenant/project id (optional)")
     create_p.add_argument(
         "--ttl", type=int, default=DEFAULT_TTL,
-        help=f"Token lifetime in seconds (default: {DEFAULT_TTL})",
+        help=f"Token lifetime in seconds (default: {DEFAULT_TTL}; 0 = permanent)",
     )
     create_p.add_argument(
         "--format", choices=["token", "json"], default="token",

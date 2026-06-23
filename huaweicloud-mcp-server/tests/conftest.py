@@ -154,6 +154,32 @@ def mock_cts_client(monkeypatch):
     return fake
 
 
+@pytest.fixture
+def cce_settings() -> Settings:
+    """Settings shaped for CCE tests (same shape as ECS)."""
+    return Settings(
+        access_key_id="AKID" + "X" * 16,
+        secret_access_key="SK" + "Y" * 38,
+        project_id="15f2d47addb14784b82eb910447250a9",
+        region="af-south-1",
+        log_file=None,
+        log_level="INFO",
+    )
+
+
+@pytest.fixture
+def mock_cce_client(monkeypatch):
+    """Replace get_client in CCE tool modules with a single MagicMock."""
+    fake = MagicMock(name="CceClient")
+    for mod in (
+        "huaweicloud_mcp.services.cce.tools.query",
+        "huaweicloud_mcp.services.cce.tools.update",
+        "huaweicloud_mcp.services.cce.tools.job",
+    ):
+        monkeypatch.setattr(f"{mod}.get_client", lambda service, settings, _f=fake: _f)
+    return fake
+
+
 # --------------------------------------------------------------------------- #
 # Backward-compat aliases — old test files use `mock_client` and `settings`
 # for whichever service they test. These are overridden per-test-directory

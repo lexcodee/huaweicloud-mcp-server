@@ -23,7 +23,7 @@ VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 SERVER_NAME = "huaweicloud-mcp-server"
 
-ALL_SERVICES = ("ecs", "pipeline", "cts")
+ALL_SERVICES = ("ecs", "pipeline", "cts", "cce")
 
 
 def build_server(
@@ -88,6 +88,13 @@ def build_server(
             "CTS: search audit traces and get trace detail. Read-only. "
             "Only the last 7 days are queryable. Sensitive values are masked."
         )
+    if "cce" in enabled:
+        instructions_parts.append(
+            "CCE: query clusters / nodes / node pools (list when id is empty, "
+            "detail when id is set), inspect async jobs, scale a node pool's "
+            "initialNodeCount (scale-down uses two-phase commit), and download "
+            "a cluster kubeconfig. Treat kubeconfig output as a secret."
+        )
 
     mcp = FastMCP(
         SERVER_NAME,
@@ -109,6 +116,10 @@ def build_server(
     if "cts" in enabled:
         from .services.cts.make_tools import make_tools as _cts_tools
         tools.update(_cts_tools(settings))
+
+    if "cce" in enabled:
+        from .services.cce.make_tools import make_tools as _cce_tools
+        tools.update(_cce_tools(settings))
 
     for name, fn in tools.items():
         mcp.add_tool(fn, name=name)

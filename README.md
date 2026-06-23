@@ -652,29 +652,6 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 
 ---
 
-## 从独立包迁移
-
-三个原始包（`ecs-mcp-server`、`codearts-pipeline-mcp-server`、`cts-mcp-server`）已被统一包取代：
-
-| 之前（3 个包） | 之后（1 个包） |
-|------|------|
-| `ecs_mcp_server.config.Settings` | `huaweicloud_mcp.config.Settings` |
-| `ecs_mcp_server.tools.query` | `huaweicloud_mcp.services.ecs.tools.query` |
-| `pipeline_mcp_server.X` | `huaweicloud_mcp.services.pipeline.X` |
-| `cts_mcp_server.X` | `huaweicloud_mcp.services.cts.X` |
-| 3 × 独立 AK/SK 配置 | 1 × 统一 Settings |
-| 3 × 重复错误包装 | 1 × 共享 `wrap_tool` + `ToolError` |
-| 3 × 独立客户端工厂 | 1 × `get_client(service, settings)` |
-| 3 × manifest 条目（3 个模块） | 1 × manifest 条目 + `build_kwargs` |
-
-### 导入深度约定
-
-- 顶层模块（`config`、`errors`、`client`、`logging_setup`）：使用相对 `.` 或 `..` 导入
-- 服务级模块（`models`、`serializers`、`make_tools`）：使用 `...`（3 个点）到达顶层包
-- 工具模块（`services/{svc}/tools/` 下）：使用 `....`（4 个点）到达顶层包
-
----
-
 ## 许可证
 
 MIT

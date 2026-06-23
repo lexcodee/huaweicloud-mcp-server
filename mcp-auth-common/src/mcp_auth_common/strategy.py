@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time as _time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Iterable
@@ -165,6 +166,9 @@ class StandaloneAuth(AuthStrategy):
         if not token:
             raise AuthError(401, "missing-bearer-token")
         try:
+            # Decode with verify_exp disabled so permanent tokens (no exp
+            # claim) are accepted.  If the token *does* carry an exp claim,
+            # verify it manually below.
             payload = self._jwt.decode(
                 token,
                 self._public_key,
@@ -172,7 +176,12 @@ class StandaloneAuth(AuthStrategy):
                 issuer=self._issuer,
                 audience=self._audience,
                 leeway=self._leeway,
+                options={"verify_exp": False},
             )
+            # Manual exp check: skip for permanent tokens (no exp claim).
+            if "exp" in payload:
+                if payload["exp"] < _time.time() - self._leeway:
+                    raise self._jwt.ExpiredSignatureError("Token has expired")
         except Exception as exc:  # noqa: BLE001
             raise AuthError(401, f"jwt-invalid:{exc.__class__.__name__}") from exc
         return _identity_from_claims(payload)
@@ -242,11 +251,14 @@ def _extract_bearer(scope: dict[str, Any]) -> str | None:
 
 
 def _identity_from_claims(payload: dict[str, Any]) -> Identity:
+    sub = payload.get("sub")
+    if not sub or not str(sub).strip():
+        raise AuthError(401, "jwt-missing-sub: 'sub' claim is required")
     roles = payload.get("roles") or []
     if isinstance(roles, str):
         roles = [r for r in roles.replace(",", " ").split() if r]
     return Identity(
-        sub=str(payload.get("sub", "")),
+        sub=str(sub),
         roles=list(roles),
         tenant=str(payload.get("tenant", "") or payload.get("tid", "")),
         iat=payload.get("iat"),
@@ -254,16 +266,26 @@ def _identity_from_claims(payload: dict[str, Any]) -> Identity:
     )
 
 
-def _load_public_key(spec: str | None) -> str | None:
+def _load_public_key(spec: str | None, *, _depth: int = 0) -> str | None:
     """Resolve a key spec to PEM text.
 
-    Three accepted forms:
+    Accepted forms:
       * ``file:/abs/path.pem`` or ``file:///abs/path.pem`` — read from disk.
       * ``env:VAR_NAME`` — read the named environment variable.
       * Anything else — taken verbatim as the PEM body.
+
+    Chaining: when an ``env:`` spec resolves to a value that itself
+    starts with ``file:`` or ``env:``, that value is resolved again
+    (up to 3 levels deep). This lets operators set
+    ``MCP_JWT_PUBLIC_KEY=file:/etc/mcp-gateway/jwt-public.pem`` in
+    their environment instead of inlining the PEM content.
     """
     if not spec:
         return None
+    if _depth > 3:
+        raise RuntimeError(
+            f"Public key spec resolution exceeded max depth (possible loop): {spec!r}"
+        )
     if spec.startswith("file:"):
         path = spec[len("file:") :]
         if path.startswith("//"):
@@ -274,5 +296,10 @@ def _load_public_key(spec: str | None) -> str | None:
         value = os.environ.get(var)
         if value is None:
             raise RuntimeError(f"Public key env var {var!r} is not set")
+        # Chaining: if the env var value is itself a file: or env: spec,
+        # resolve it recursively so operators can point to a file instead
+        # of inlining PEM content.
+        if value.startswith(("file:", "env:")):
+            return _load_public_key(value, _depth=_depth + 1)
         return value
     return spec

@@ -67,6 +67,16 @@ def _ensure_registry() -> None:
         "project_id_in_creds": True,
     }
 
+    # CCE
+    from huaweicloudsdkcce.v3.cce_client import CceClient
+    from huaweicloudsdkcce.v3.region.cce_region import CceRegion
+
+    _SERVICE_REGISTRY["cce"] = {
+        "client_cls": CceClient,
+        "region_cls": CceRegion,
+        "project_id_in_creds": True,
+    }
+
 
 def _build_http_config(settings: Settings) -> HttpConfig:
     cfg = HttpConfig.get_default_config()

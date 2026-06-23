@@ -58,15 +58,17 @@ def rsa_keys(tmp_path_factory):
 
 
 def _make_token(priv_pem: str, sub: str = "alice", roles: list[str] | None = None,
-                issuer: str = "mcp-gateway", exp_offset: int = 3600) -> str:
+                issuer: str = "mcp-gateway", exp_offset: int = 3600,
+                permanent: bool = False) -> str:
     now = int(time.time())
     payload = {
         "sub": sub,
         "roles": roles or ["readonly"],
         "iss": issuer,
         "iat": now,
-        "exp": now + exp_offset,
     }
+    if not permanent:
+        payload["exp"] = now + exp_offset
     return jwt.encode(payload, priv_pem, algorithm="RS256")
 
 
@@ -126,6 +128,15 @@ class TestJwtVerification:
         client = TestClient(app)
         r = client.get("/ecs/sse", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 401
+
+    def test_permanent_token_passes(self, rsa_keys):
+        """Token without exp claim should be accepted (permanent)."""
+        pub, priv = rsa_keys
+        token = _make_token(priv, roles=["readonly"], permanent=True)
+        app = _build_protected_app(pub, [("/ecs", ["readonly"])])
+        client = TestClient(app)
+        r = client.get("/ecs/sse", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
 
 
 class TestPathRbac:

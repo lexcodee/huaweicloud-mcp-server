@@ -35,6 +35,7 @@ from huaweicloudsdkecs.v2 import (
     DeleteServersRequest,
     DeleteServersRequestBody,
     ResizePostPaidServerOption,
+    ResizePrePaidServerOption,
     ResizeServerRequest,
     ResizeServerRequestBody,
     ServerId,
@@ -273,10 +274,17 @@ def make_lifecycle_tools(settings: Settings) -> dict:
         )
 
         def _execute() -> dict:
-            opt = ResizePostPaidServerOption(
-                flavor_ref=params.target_flavor_ref,
-                mode=params.mode,
-            )
+            if params.dedicated_host_id:
+                opt = ResizePrePaidServerOption(
+                    flavor_ref=params.target_flavor_ref,
+                    dedicated_host_id=params.dedicated_host_id,
+                    mode=params.mode,
+                )
+            else:
+                opt = ResizePostPaidServerOption(
+                    flavor_ref=params.target_flavor_ref,
+                    mode=params.mode,
+                )
             body = ResizeServerRequestBody(resize=opt)
             resp = client.resize_server(
                 ResizeServerRequest(server_id=params.server_id, body=body)

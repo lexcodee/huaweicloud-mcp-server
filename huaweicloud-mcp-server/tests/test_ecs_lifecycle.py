@@ -230,3 +230,51 @@ def test_resize_confirm_executes(settings, mock_ecs_client):
     assert sent.server_id == UUID_A
     assert sent.body.resize.flavor_ref == "s6.large.4"
     assert sent.body.resize.mode == "withStopServer"
+
+
+def test_resize_with_dedicated_host_uses_prepaid_option(settings, mock_ecs_client):
+    """When dedicated_host_id is set, ResizePrePaidServerOption is used."""
+    from huaweicloudsdkecs.v2 import ResizePrePaidServerOption
+
+    mock_ecs_client.resize_server.return_value = MagicMock(job_id="job-deh")
+    tools = make_lifecycle_tools(settings)
+
+    out1 = tools["ecs_resize_server"](
+        server_id=UUID_A,
+        target_flavor_ref="c9.large.4",
+        dedicated_host_id="deh-123",
+        mode="withStopServer",
+    )
+    approval_id = out1["data"]["approval_id"]
+
+    out2 = tools["ecs_confirm_destructive"](approval_id=approval_id)
+    assert out2["ok"] is True
+    assert out2["data"]["job_id"] == "job-deh"
+    sent = mock_ecs_client.resize_server.call_args[0][0]
+    resize_opt = sent.body.resize
+    # Must be the prepaid option class (has dedicated_host_id)
+    assert isinstance(resize_opt, ResizePrePaidServerOption)
+    assert resize_opt.flavor_ref == "c9.large.4"
+    assert resize_opt.dedicated_host_id == "deh-123"
+    assert resize_opt.mode == "withStopServer"
+
+
+def test_resize_without_dedicated_host_uses_postpaid_option(settings, mock_ecs_client):
+    """When dedicated_host_id is absent, ResizePostPaidServerOption is used."""
+    from huaweicloudsdkecs.v2 import ResizePostPaidServerOption
+
+    mock_ecs_client.resize_server.return_value = MagicMock(job_id="job-pp")
+    tools = make_lifecycle_tools(settings)
+
+    out1 = tools["ecs_resize_server"](
+        server_id=UUID_A,
+        target_flavor_ref="s6.large.4",
+        mode="withStopServer",
+    )
+    approval_id = out1["data"]["approval_id"]
+
+    out2 = tools["ecs_confirm_destructive"](approval_id=approval_id)
+    assert out2["ok"] is True
+    resize_opt = mock_ecs_client.resize_server.call_args[0][0].body.resize
+    assert isinstance(resize_opt, ResizePostPaidServerOption)
+    assert getattr(resize_opt, "dedicated_host_id", None) is None
