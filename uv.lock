@@ -12,9 +12,6 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "codearts-pipeline-mcp-server",
-    "huaweicloud-cts-mcp-server",
-    "huaweicloud-ecs-mcp-server",
     "huaweicloud-mcp-server",
     "mcp-auth-common",
     "mcp-gateway",
@@ -279,40 +276,6 @@ wheels = [
 ]
 
 [[package]]
-name = "codearts-pipeline-mcp-server"
-version = "0.1.0"
-source = { editable = "codearts-pipeline-mcp-server" }
-dependencies = [
-    { name = "huaweicloudsdkcodeartspipeline" },
-    { name = "huaweicloudsdkcore" },
-    { name = "mcp", extra = ["cli"] },
-    { name = "mcp-auth-common" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-mock" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "huaweicloudsdkcodeartspipeline", specifier = ">=3.1.100" },
-    { name = "huaweicloudsdkcore", specifier = ">=3.1.100" },
-    { name = "mcp", extras = ["cli"], specifier = ">=1.2.0" },
-    { name = "mcp-auth-common", editable = "mcp-auth-common" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -503,82 +466,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
 ]
-
-[[package]]
-name = "huaweicloud-cts-mcp-server"
-version = "0.1.0"
-source = { editable = "cts-mcp-server" }
-dependencies = [
-    { name = "huaweicloudsdkcore" },
-    { name = "huaweicloudsdkcts" },
-    { name = "mcp", extra = ["cli"] },
-    { name = "mcp-auth-common" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "starlette" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-mock" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "huaweicloudsdkcore", specifier = ">=3.1.100" },
-    { name = "huaweicloudsdkcts", specifier = ">=3.1.100" },
-    { name = "mcp", extras = ["cli"], specifier = ">=1.2.0" },
-    { name = "mcp-auth-common", editable = "mcp-auth-common" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "starlette", specifier = ">=0.37" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
-]
-provides-extras = ["dev"]
-
-[[package]]
-name = "huaweicloud-ecs-mcp-server"
-version = "0.1.0"
-source = { editable = "ecs-mcp-server" }
-dependencies = [
-    { name = "huaweicloudsdkcore" },
-    { name = "huaweicloudsdkecs" },
-    { name = "mcp", extra = ["cli"] },
-    { name = "mcp-auth-common" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "starlette" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-mock" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "huaweicloudsdkcore", specifier = ">=3.1.100" },
-    { name = "huaweicloudsdkecs", specifier = ">=3.1.100" },
-    { name = "mcp", extras = ["cli"], specifier = ">=1.2.0" },
-    { name = "mcp-auth-common", editable = "mcp-auth-common" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "starlette", specifier = ">=0.37" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "huaweicloud-mcp-server"
@@ -1128,18 +1015,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/03/e2/08a497ef684b88559c9cc5f4ad53a37e7b99e727094a86d6ea32536d5d3c/pytest_asyncio-1.4.0-py3-none-any.whl", hash = "sha256:933ca923a23075a87fb7070c0ec272a6848489824d887c85c812670932835aa1", size = 16930, upload-time = "2026-05-26T09:56:02.576Z" },
-]
-
-[[package]]
-name = "pytest-mock"
-version = "3.15.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/68/14/eb014d26be205d38ad5ad20d9a80f7d201472e08167f0bb4361e251084a9/pytest_mock-3.15.1.tar.gz", hash = "sha256:1849a238f6f396da19762269de72cb1814ab44416fa73a8686deac10b0d87a0f", size = 34036, upload-time = "2025-09-16T16:37:27.081Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/cc/06253936f4a7fa2e0f48dfe6d851d9c56df896a9ab09ac019d70b760619c/pytest_mock-3.15.1-py3-none-any.whl", hash = "sha256:0a25e2eb88fe5168d535041d09a4529a188176ae608a6d249ee65abc0949630d", size = 10095, upload-time = "2025-09-16T16:37:25.734Z" },
 ]
 
 [[package]]
