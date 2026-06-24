@@ -145,6 +145,36 @@ def test_build_preview_build_error(bad_manifest):
     assert svc.tools == []
 
 
+def test_build_preview_module_not_found_hint(tmp_path):
+    """ModuleNotFoundError should be enriched with an interpreter hint so the
+    operator can spot the most common cause — wrong Python interpreter
+    (forgotten venv activation)."""
+    p = tmp_path / "manifest.yaml"
+    p.write_text(
+        """
+jwt:
+  issuer: mcp-gateway
+  public_key: env:MCP_JWT_PUBLIC_KEY
+services:
+  - name: ghost
+    enabled: true
+    module: definitely_not_installed_module_xyz
+    attr: build_server
+    mount_path: /ghost
+""".strip(),
+        encoding="utf-8",
+    )
+    report = build_preview(p)
+    assert not report.ok
+    [svc] = report.services
+    assert "ModuleNotFoundError" in svc.build_error
+    assert "HINT:" in svc.build_error
+    assert "python=" in svc.build_error
+    assert "venv=" in svc.build_error
+    # The hint must reference the actual missing module name.
+    assert "definitely_not_installed_module_xyz" in svc.build_error
+
+
 def test_build_preview_cli_override_disables(rbac_manifest):
     report = build_preview(rbac_manifest, cli_disable=["huaweicloud"])
     enabled = [s for s in report.services if s.enabled]

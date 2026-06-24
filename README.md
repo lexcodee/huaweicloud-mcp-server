@@ -4,7 +4,7 @@
 
 一个 MCP Server 覆盖全部华为云服务。Agent 只需对接 **一个 URL**，即可访问所有已启用的云服务工具。按需启动服务子集，JWT 鉴权保障生产安全，新增云服务无需 Agent 侧任何配置变更。
 
-**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）、CCE（云容器引擎）
+**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）、CCE（云容器引擎）、LTS（日志服务）、CES（云监控）
 **开发中**：OBS（对象存储）、RDS（关系数据库）、VPC（虚拟网络）…
 
 ```
@@ -17,7 +17,7 @@ https://example.com/healthz    ← 网关探活（免鉴权）
 | 特性 | 说明 |
 |------|------|
 | 单 URL 对接 | Agent 配置一个 MCP Server 条目，永久不变 |
-| 按需启用 | `MCP_ENABLED_SERVICES=ecs,pipeline` 仅加载所需服务 |
+| 按需启用 | service 级：`MCP_ENABLED_SERVICES=ecs,pipeline` 仅加载所需服务<br/>tool 级：`MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` 用 glob 进一步裁剪工具集 |
 | JWT 鉴权 | 生产环境 RS256 签验 + 角色 RBAC；本地开发免鉴权 |
 | 两阶段提交 | 破坏性操作（删除/关机/变更规格）需用户显式确认 |
 | 零配置扩展 | 新增云服务只改服务端，Agent 无感知 |
@@ -31,7 +31,7 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 ├── start.sh                       ← 启动脚本（加载 .env + 启动网关）
 ├── .env                           ← 统一环境变量（AK/SK + JWT + 配置）
 ├── .env.example                   ← 全量模板
-├── manifest.yaml                  ← 服务拓扑（策略 1：单挂载 /hwc）
+├── manifest.yaml                  ← 服务拓扑（单挂载 /hwc）
 ├── pyproject.toml                 ← uv workspace 声明
 │
 ├── huaweicloud-mcp-server/        ← 统一华为云 MCP Server
@@ -45,7 +45,9 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 │           ├── ecs/               ← 8 工具 (list/get/power/delete/resize)
 │           ├── pipeline/          ← 6 工具 (list/get/run/update/toggle)
 │           ├── cts/               ← 2 工具 (search/get 审计事件)
-│           └── cce/               ← 6 工具 (query clusters/nodes/nodepools, update nodepool, get_job)
+│           ├── cce/               ← 6 工具 (query clusters/nodes/nodepools, update nodepool, get_job)
+│           ├── lts/               ← 6 工具 (query log resources, search logs, alarm rules/history)
+│           └── ces/               ← 6 工具 (list metrics, get metric data, alarm rules/history, resource groups, events)
 │
 ├── mcp-auth-common/               ← 共享鉴权库 (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
@@ -64,7 +66,7 @@ huaweicloud_mcp/
 ├── client.py          # SDK 客户端工厂: get_client("ecs", settings) — lru_cached
 ├── errors.py          # ToolError, wrap_tool 装饰器, PendingActions（两阶段提交）
 ├── logging_setup.py   # SecretMaskingFilter + setup_logging()
-├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce"}) → FastMCP
+├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce","lts","ces"}) → FastMCP
 ├── app.py             # ASGI 入口（SSE/HTTP，含 keep-alive 中间件）
 └── services/
     ├── ecs/
@@ -103,6 +105,24 @@ huaweicloud_mcp/
             ├── query.py      # query_clusters, query_nodes, query_nodepools
             ├── update.py     # update_nodepool, confirm_destructive
             └── job.py        # get_job
+    └── lts/
+        ├── make_tools.py
+        ├── models.py
+        ├── serializers.py
+        └── tools/
+            ├── discovery.py  # query_log_resources (groups → streams)
+            ├── search.py     # search_logs, get_log_context, query_histogram
+            └── alarm.py      # query_alarm_rules, list_alarm_history
+    └── ces/
+        ├── make_tools.py
+        ├── models.py
+        ├── serializers.py
+        ├── _time.py         # 时间窗口解析（复用 CTS time_utils）
+        └── tools/
+            ├── metric.py     # list_metrics, get_metric_data
+            ├── alarm.py      # query_alarm_rules, list_alarm_histories
+            ├── resource_group.py  # query_resource_groups
+            └── event.py      # list_event_data
 ```
 
 ### 共享基础设施
@@ -110,13 +130,13 @@ huaweicloud_mcp/
 | 模块 | 用途 |
 |------|------|
 | `config.py` | 单一 `Settings` dataclass — AK/SK/region/project_id/timezone。`load_settings()` 从环境变量读取，校验必需项，缺失时快速退出。 |
-| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS、CCE 共用一个工厂，共享 HttpConfig（超时、重试）。 |
+| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS、CCE、LTS、CES 共用一个工厂，共享 HttpConfig（超时、重试）。 |
 | `errors.py` | `ToolError` 异常 + `wrap_tool` 装饰器：捕获 SDK 错误，标准化为 `{ok: false, error: {...}}` 信封，记录结构化事件。`PendingActions` 实现两阶段提交。 |
 | `logging_setup.py` | `SecretMaskingFilter` 在日志中脱敏 AK/SK。`setup_logging()` 配置仅 stderr（stdio 安全）或文件日志。 |
 
 ---
 
-## MCP 工具一览（21 个）
+## MCP 工具一览（34 个）
 
 ### ECS — 云主机生命周期管理（8 个）
 
@@ -160,6 +180,30 @@ huaweicloud_mcp/
 | `cce_get_job` | 查询异步任务状态（集群创建/升级/节点池缩放等） | readonly |
 | `cce_confirm_destructive` | 确认执行待定的破坏性操作（缩容） | — |
 
+### LTS — 日志服务（6 个）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `lts_query_log_resources` | 列出日志组 / 列出组下日志流（dispatch: log_group_id=None → 组列表, 设置 → 流列表） | readonly |
+| `lts_search_logs` | 关键词 / SQL 搜索日志内容 | readonly |
+| `lts_get_log_context` | 获取指定行号前后的上下文日志（因果链分析） | readonly |
+| `lts_query_histogram` | 时间桶计数（定位日志尖峰） | readonly |
+| `lts_query_alarm_rules` | 列出告警规则 / 查看单条规则详情（dispatch: rule_id=None → 列表, 设置 → 详情） | readonly |
+| `lts_list_alarm_history` | 查询最近触发的告警事件 | readonly |
+
+### CES — 云监控（6 个）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `ces_list_metrics` | 查询指标列表（按 namespace/维度/资源 ID 过滤），是 `ces_get_metric_data` 的前置发现步骤 | readonly |
+| `ces_get_metric_data` | 查询指标时序数据，支持多指标批量查询（合并了 get_metric_data + batch_get_metric_data） | readonly |
+| `ces_query_alarm_rules` | 列出告警规则 / 查看单条规则详情含策略和资源（dispatch: alarm_id=None → 列表, 设置 → 详情） | readonly |
+| `ces_list_alarm_histories` | 查询告警历史记录（复盘事故时间线） | readonly |
+| `ces_query_resource_groups` | 列出资源分组 / 查看分组详情含资源列表（dispatch: group_id=None → 列表, 设置 → 详情） | readonly |
+| `ces_list_event_data` | 查询事件监控数据 / 查看事件详情（dispatch: event_name=None → 列表, 设置 → 详情） | readonly |
+
+> 常用 namespace 速查：`SYS.ECS`（云服务器）、`SYS.RDS`（关系数据库）、`SYS.DCS`（Redis 缓存）、`SYS.ELB`（负载均衡）、`SYS.CCE`（容器集群节点）、`SYS.FunctionGraph`（函数工作流）
+
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 
 ---
@@ -195,18 +239,20 @@ huaweicloud_mcp/
                           │  单挂载点：                           │
                           │    /hwc  → build_server(             │
                           │             enabled=[ecs,pipeline,cts│
-                          │                        ,cce]         │
+                          │                        ,cce,lts,ces]│
                           │           )                           │
                           └──────────────────────────────────────┘
                                     │
                                     ▼
                           ┌──────────────────┐
                           │  统一 FastMCP     │
-                          │  21 个工具：      │
+                          │  34 个工具：      │
                           │    ecs_* (8)      │
                           │    pipeline_* (6) │
                           │    cts_* (2)      │
                           │    cce_* (5+1)    │
+                          │    lts_* (6)      │
+                          │    ces_* (6)      │
                           └──────────────────┘
 ```
 
@@ -334,7 +380,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/hwc/sse
 统一 Server 可直接通过 stdio 运行，无需网关或 JWT：
 
 ```bash
-# 全部服务（21 个工具）
+# 全部服务（34 个工具）
 huaweicloud-mcp-server
 
 # 仅启用子集
@@ -348,7 +394,8 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## Agent 配置
 
-> stdio 模式下 AK/SK/Region 等凭证必须通过 `env` 传入（进程不继承 shell 环境变量）。
+> stdio 模式下 Hermes MCP 子进程不继承 shell 环境变量，必须通过 wrapper 脚本注入 `.env` 中的凭据。
+> 不要将 AK/SK 写入 `config.yaml` 的 `env:` 块（文件非 0600，存在泄露风险）。
 > SSE 模式通过网关鉴权，凭证在网关侧配置，Agent 侧仅传 JWT token。
 
 ### Hermes Agent
@@ -357,21 +404,48 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 **stdio（本地开发，推荐）**
 
+> ⚠ Hermes MCP 子进程不继承 shell 环境变量，直接 `command: .venv/bin/huaweicloud-mcp-server` 会因缺少 AK/SK 启动失败。
+> 不要用 `env:` 块把凭据写进 config.yaml（文件非 0600，可能被 dotfile sync 泄露）。
+> 推荐用 wrapper 脚本注入凭据。
+
+**Step 1** — 创建 wrapper 脚本 `scripts/run-with-env.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -e
+ENV_FILE="${HWC_MCP_ENV_FILE:-/path/to/huaweicloud-mcp-server/.env}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
+fi
+exec /path/to/.venv/bin/huaweicloud-mcp-server "$@"
+```
+
+```bash
+chmod +x scripts/run-with-env.sh
+chmod 600 .env          # 确保凭据文件仅 owner 可读
+```
+
+**Step 2** — 注册到 Hermes（用 `hermes config set`，不要直接编辑 config.yaml）：
+
+```bash
+hermes config set "mcp_servers.huaweicloud.command" /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
+hermes config set "mcp_servers.huaweicloud.timeout" 120
+hermes config set "mcp_servers.huaweicloud.connect_timeout" 30
+```
+
+等效 YAML（仅供理解，不要手动写入）：
+
 ```yaml
 mcp_servers:
   huaweicloud:
-    command: /path/to/.venv/bin/huaweicloud-mcp-server
+    command: /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
     timeout: 120
-    env:
-      HUAWEICLOUD_ACCESS_KEY_ID: your_ak
-      HUAWEICLOUD_SECRET_ACCESS_KEY: your_sk
-      HUAWEICLOUD_REGION: af-south-1
-      HUAWEICLOUD_PROJECT_ID: your_project_id
-      CODEARTS_DEFAULT_PROJECT_ID: your_pipeline_project_id
-    # 可选：仅启用服务子集
-    # env:
-    #   MCP_ENABLED_SERVICES: ecs,pipeline
+    connect_timeout: 30
 ```
+
+可选：仅启用服务子集，在 `.env` 中设置 `MCP_ENABLED_SERVICES=ecs,pipeline`。
 
 **SSE via 网关（生产）**
 
@@ -391,7 +465,7 @@ mcp_servers:
 ```bash
 hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 21
+#   ✓ Tools discovered: 34
 ```
 
 ### Claude Code
@@ -698,8 +772,8 @@ Summary: 2 mount(s), 34 active tools, 10 filtered
 | `HUAWEICLOUD_ACCESS_KEY_ID` | 是 | | Access Key ID |
 | `HUAWEICLOUD_SECRET_ACCESS_KEY` | 是 | | Secret Access Key |
 | `HUAWEICLOUD_REGION` | 是 | | 区域，如 `af-south-1` |
-| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | 项目 UUID |
-| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | `=HUAWEICLOUD_PROJECT_ID` | Pipeline 项目回退 |
+| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | 项目 UUID（IaaS 项目，与 CodeArts 项目**不同**） |
+| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | | CodeArts 项目 UUID（与 `HUAWEICLOUD_PROJECT_ID` 不同，**不会回退**） |
 | `CTS_DEFAULT_TIMEZONE` | 否 | `Asia/Shanghai` | CTS 时间解析时区 |
 
 ### MCP Server
@@ -709,7 +783,7 @@ Summary: 2 mount(s), 34 active tools, 10 filtered
 | `MCP_TRANSPORT` | 否 | `stdio` | `stdio` / `sse` / `streamable-http` |
 | `MCP_HOST` | 否 | `127.0.0.1` | SSE/HTTP 绑定地址 |
 | `MCP_PORT` | 否 | `8000` | SSE/HTTP 绑定端口 |
-| `MCP_ENABLED_SERVICES` | 否 | `ecs,pipeline,cts,cce` | 逗号分隔的服务子集 |
+| `MCP_ENABLED_SERVICES` | 否 | `ecs,pipeline,cts,cce,lts,ces` | 逗号分隔的服务子集 |
 | `MCP_INCLUDE_TOOLS` | 否 | — | 逗号分隔的 fnmatch glob，仅保留匹配的工具 |
 | `MCP_EXCLUDE_TOOLS` | 否 | — | 逗号分隔的 fnmatch glob，移除匹配的工具（在 include 之后生效） |
 | `HUAWEICLOUD_MCP_LOG_LEVEL` | 否 | `INFO` | 日志级别 |
@@ -757,13 +831,13 @@ uv sync
 ### 运行测试
 
 ```bash
-# 统一 Server（182 个测试）
+# 统一 Server（244 个测试）
 uv run pytest huaweicloud-mcp-server/tests/ -q
 
 # 网关（120 个测试）
 uv run pytest mcp-gateway/tests/ -q
 
-# 全部（302 个测试）
+# 全部（364 个测试）
 uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 ```
 
@@ -775,6 +849,8 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 | Pipeline 工具 | 48 | list/get/run/update/toggle/confirm |
 | CTS 工具 | 36 | search/detail + time_utils + mask_utils + 7 天窗口 |
 | CCE 工具 | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool 拒绝 |
+| LTS 工具 | 30 | discovery + search + alarm rules/history + histogram + context |
+| CES 工具 | 16 | list metrics + get metric data + alarm rules/histories + resource groups + event data |
 | 配置 / 客户端 | 16 | Settings 校验、客户端工厂、缓存 |
 | 网关鉴权 | 10 | JWT 验签 + RBAC + Identity 注入 + 永久 token |
 | 网关 dev 模式 | 10 | 免 JWT / loopback / open / disabled |

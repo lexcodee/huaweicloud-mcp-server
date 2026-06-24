@@ -7,7 +7,7 @@ access every enabled cloud service tool. Enable only the services you need,
 secure production with JWT auth, and add new cloud services with **zero
 Agent-side config change**.
 
-**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine)
+**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine), LTS (log tank service), CES (cloud eye service)
 **Coming soon**: OBS (object storage), RDS (relational DB), VPC (virtual network)…
 
 ```
@@ -20,7 +20,7 @@ https://example.com/healthz    ← Gateway health (no auth)
 | Feature | Description |
 |---------|-------------|
 | Single URL | Agent configures one MCP server entry, forever |
-| On-demand enable | `MCP_ENABLED_SERVICES=ecs,pipeline` loads only what you need |
+| On-demand enable | Service-level: `MCP_ENABLED_SERVICES=ecs,pipeline` loads only what you need<br/>Tool-level: `MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` glob-filter individual tools |
 | JWT auth | RS256 verification + role RBAC for production; no auth for local dev |
 | Two-phase commit | Destructive ops (delete/stop/resize) require explicit user approval |
 | Zero-config growth | New cloud services are server-side only, Agent is unaware |
@@ -34,7 +34,7 @@ huaweicloud-mcp-server/          # ← workspace root
 ├── start.sh                       ← Start script (loads .env + starts gateway)
 ├── .env                           ← Unified env vars (AK/SK + JWT + config)
 ├── .env.example                   ← Full template
-├── manifest.yaml                  ← Service topology (Strategy 1: single mount /hwc)
+├── manifest.yaml                  ← Service topology (single mount /hwc)
 ├── pyproject.toml                 ← uv workspace declaration
 │
 ├── huaweicloud-mcp-server/        ← Unified Huawei Cloud MCP Server
@@ -48,7 +48,9 @@ huaweicloud-mcp-server/          # ← workspace root
 │           ├── ecs/               ← 8 tools (list/get/power/delete/resize)
 │           ├── pipeline/          ← 6 tools (list/get/run/update/toggle)
 │           ├── cts/               ← 2 tools (search/get audit traces)
-│           └── cce/               ← 6 tools (query clusters/nodes/nodepools, update nodepool, get_job)
+│           ├── cce/               ← 6 tools (query clusters/nodes/nodepools, update nodepool, get_job)
+│           ├── lts/               ← 6 tools (query log resources, search logs, alarm rules/history)
+│           └── ces/               ← 6 tools (list metrics, get metric data, alarm rules/history, resource groups, events)
 │
 ├── mcp-auth-common/               ← Shared auth (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
@@ -67,7 +69,7 @@ huaweicloud_mcp/
 ├── client.py          # SDK client factory: get_client("ecs", settings) — lru_cached
 ├── errors.py          # ToolError, wrap_tool decorator, PendingActions (two-phase commit)
 ├── logging_setup.py   # SecretMaskingFilter + setup_logging()
-├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce"}) → FastMCP
+├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce","lts","ces"}) → FastMCP
 ├── app.py             # ASGI entrypoint for SSE/HTTP (with keep-alive middleware)
 └── services/
     ├── ecs/
@@ -106,6 +108,24 @@ huaweicloud_mcp/
             ├── query.py      # query_clusters, query_nodes, query_nodepools
             ├── update.py     # update_nodepool, confirm_destructive
             └── job.py        # get_job
+    └── lts/
+        ├── make_tools.py
+        ├── models.py
+        ├── serializers.py
+        └── tools/
+            ├── discovery.py  # query_log_resources (groups → streams)
+            ├── search.py     # search_logs, get_log_context, query_histogram
+            └── alarm.py      # query_alarm_rules, list_alarm_history
+    └── ces/
+        ├── make_tools.py
+        ├── models.py
+        ├── serializers.py
+        ├── _time.py         # Time window resolution (reuses CTS time_utils)
+        └── tools/
+            ├── metric.py     # list_metrics, get_metric_data
+            ├── alarm.py      # query_alarm_rules, list_alarm_histories
+            ├── resource_group.py  # query_resource_groups
+            └── event.py      # list_event_data
 ```
 
 ### Shared infrastructure
@@ -113,13 +133,13 @@ huaweicloud_mcp/
 | Module | Purpose |
 |--------|---------|
 | `config.py` | Single `Settings` dataclass — AK/SK/region/project_id/timezone. `load_settings()` reads from env, validates required vars, exits fast on missing. |
-| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE clients with shared HttpConfig (timeout, retries). |
+| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE, LTS, CES clients with shared HttpConfig (timeout, retries). |
 | `errors.py` | `ToolError` exception + `wrap_tool` decorator that catches SDK errors, normalizes them to `{ok: false, error: {...}}` envelopes, and logs structured events. `PendingActions` implements the two-phase commit for destructive ops. |
 | `logging_setup.py` | `SecretMaskingFilter` redacts AK/SK in log output. `setup_logging()` configures stderr-only (stdio-safe) or file logging. |
 
 ---
 
-## MCP tools (21 total)
+## MCP tools (34 total)
 
 ### ECS — Cloud server lifecycle management (8 tools)
 
@@ -163,6 +183,30 @@ huaweicloud_mcp/
 | `cce_get_job` | Poll async job status (cluster create/upgrade/node-pool resize etc.) | readonly |
 | `cce_confirm_destructive` | Execute pending destructive op (scale-down) | — |
 
+### LTS — Log Tank Service (6 tools)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `lts_query_log_resources` | List log groups / list streams under a group (dispatch: log_group_id=None → groups, set → streams) | readonly |
+| `lts_search_logs` | Keyword / SQL log search | readonly |
+| `lts_get_log_context` | Fetch N lines around a specific line_num (causal-chain analysis) | readonly |
+| `lts_query_histogram` | Time-bucketed counts (locate log spikes) | readonly |
+| `lts_query_alarm_rules` | List alarm rules / get single rule detail (dispatch: rule_id=None → list, set → detail) | readonly |
+| `lts_list_alarm_history` | Recently triggered alarm events | readonly |
+
+### CES — Cloud Eye Service (6 tools)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `ces_list_metrics` | List available metrics (filter by namespace/dimension/resource ID); prerequisite for `ces_get_metric_data` | readonly |
+| `ces_get_metric_data` | Query metric time-series data; accepts multiple metrics in one call (merges get_metric_data + batch_get_metric_data) | readonly |
+| `ces_query_alarm_rules` | List alarm rules / get single rule detail with policies and resources (dispatch: alarm_id=None → list, set → detail) | readonly |
+| `ces_list_alarm_histories` | Query alarm history records (incident post-mortem) | readonly |
+| `ces_query_resource_groups` | List resource groups / get group detail with resources (dispatch: group_id=None → list, set → detail) | readonly |
+| `ces_list_event_data` | List event monitoring data / get event detail (dispatch: event_name=None → list, set → detail) | readonly |
+
+> Common namespaces: `SYS.ECS` (cloud servers), `SYS.RDS` (relational DB), `SYS.DCS` (Redis cache), `SYS.ELB` (load balancer), `SYS.CCE` (container cluster nodes), `SYS.FunctionGraph` (function compute)
+
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 
 ---
@@ -200,18 +244,20 @@ If the approval ID expires, re-issue the original call to get a fresh one.
                           │  Single mount:                       │
                           │    /hwc  → build_server(             │
                           │             enabled=[ecs,pipeline,cts│
-                          │                        ,cce]         │
+                          │                        ,cce,lts,ces]│
                           │           )                           │
                           └──────────────────────────────────────┘
                                     │
                                     ▼
                           ┌──────────────────┐
                           │  Unified FastMCP  │
-                          │  21 tools:        │
+                          │  34 tools:        │
                           │    ecs_* (8)      │
                           │    pipeline_* (6) │
                           │    cts_* (2)      │
                           │    cce_* (5+1)    │
+                          │    lts_* (6)      │
+                          │    ces_* (6)      │
                           └──────────────────┘
 ```
 
@@ -332,7 +378,7 @@ curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
 The unified server can run directly via stdio — no gateway or JWT needed:
 
 ```bash
-# All services (21 tools)
+# All services (34 tools)
 huaweicloud-mcp-server
 
 # Subset only
@@ -346,8 +392,10 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## Agent configuration
 
-> In stdio mode, credentials (AK/SK/Region) must be passed via `env` — the
-> spawned process does not inherit shell environment variables.
+> In stdio mode, the Hermes MCP subprocess does NOT inherit shell environment
+> variables. You must use a wrapper script to inject credentials from `.env`.
+> Do NOT put AK/SK in `config.yaml`'s `env:` block — the file is not chmod 600
+> and may be synced via dotfile managers, leaking credentials.
 > In SSE mode, auth is handled by the gateway; the Agent only sends a JWT token.
 
 ### Hermes Agent
@@ -356,21 +404,48 @@ Add to `~/.hermes/config.yaml`.
 
 **stdio (local dev, recommended)**
 
+> ⚠ A bare `command: .venv/bin/huaweicloud-mcp-server` will fail — the subprocess
+> has no AK/SK. Do NOT use `env:` in config.yaml (credentials leak risk).
+> Use a wrapper script instead.
+
+**Step 1** — Create wrapper script `scripts/run-with-env.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -e
+ENV_FILE="${HWC_MCP_ENV_FILE:-/path/to/huaweicloud-mcp-server/.env}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
+fi
+exec /path/to/.venv/bin/huaweicloud-mcp-server "$@"
+```
+
+```bash
+chmod +x scripts/run-with-env.sh
+chmod 600 .env          # credentials file: owner-read only
+```
+
+**Step 2** — Register with Hermes (use `hermes config set`, do NOT edit config.yaml directly):
+
+```bash
+hermes config set "mcp_servers.huaweicloud.command" /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
+hermes config set "mcp_servers.huaweicloud.timeout" 120
+hermes config set "mcp_servers.huaweicloud.connect_timeout" 30
+```
+
+Equivalent YAML (for reference only — do NOT write manually):
+
 ```yaml
 mcp_servers:
   huaweicloud:
-    command: /path/to/.venv/bin/huaweicloud-mcp-server
+    command: /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
     timeout: 120
-    env:
-      HUAWEICLOUD_ACCESS_KEY_ID: your_ak
-      HUAWEICLOUD_SECRET_ACCESS_KEY: your_sk
-      HUAWEICLOUD_REGION: af-south-1
-      HUAWEICLOUD_PROJECT_ID: your_project_id
-      CODEARTS_DEFAULT_PROJECT_ID: your_pipeline_project_id
-    # Optional: enable only a subset of services
-    # env:
-    #   MCP_ENABLED_SERVICES: ecs,pipeline
+    connect_timeout: 30
 ```
+
+Optional: enable only a subset of services by setting `MCP_ENABLED_SERVICES=ecs,pipeline` in `.env`.
 
 **SSE via gateway (production)**
 
@@ -384,7 +459,7 @@ mcp_servers:
     headers:
       Authorization: Bearer ***rmes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 21
+#   ✓ Tools discovered: 34
 ```
 
 ### Claude Code
@@ -704,8 +779,8 @@ Same service-level overrides as `serve`:
 | `HUAWEICLOUD_ACCESS_KEY_ID` | yes | | Access key ID |
 | `HUAWEICLOUD_SECRET_ACCESS_KEY` | yes | | Secret access key |
 | `HUAWEICLOUD_REGION` | yes | | Region, e.g. `af-south-1` |
-| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | Project UUID |
-| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | `=HUAWEICLOUD_PROJECT_ID` | Pipeline project fallback |
+| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | Project UUID (IaaS project — **different** from the CodeArts project) |
+| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | | CodeArts project UUID (distinct from `HUAWEICLOUD_PROJECT_ID`; **no fallback**) |
 | `CTS_DEFAULT_TIMEZONE` | no | `Asia/Shanghai` | CTS time parsing timezone |
 
 ### MCP Server
@@ -715,7 +790,7 @@ Same service-level overrides as `serve`:
 | `MCP_TRANSPORT` | no | `stdio` | `stdio` / `sse` / `streamable-http` |
 | `MCP_HOST` | no | `127.0.0.1` | SSE/HTTP bind host |
 | `MCP_PORT` | no | `8000` | SSE/HTTP bind port |
-| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce` | Comma-separated service subset |
+| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce,lts,ces` | Comma-separated service subset |
 | `MCP_INCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; keep only matching tools |
 | `MCP_EXCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; remove matching tools (after include) |
 | `HUAWEICLOUD_MCP_LOG_LEVEL` | no | `INFO` | Log level |
@@ -763,13 +838,13 @@ uv sync
 ### Run tests
 
 ```bash
-# Unified server (182 tests)
+# Unified server (244 tests)
 uv run pytest huaweicloud-mcp-server/tests/ -q
 
 # Gateway (120 tests)
 uv run pytest mcp-gateway/tests/ -q
 
-# All (302 tests)
+# All (364 tests)
 uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 ```
 
@@ -781,6 +856,8 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 | Pipeline tools | 48 | list/get/run/update/toggle/confirm |
 | CTS tools | 36 | search/detail + time_utils + mask_utils + 7-day window |
 | CCE tools | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool rejection |
+| LTS tools | 30 | discovery + search + alarm rules/history + histogram + context |
+| CES tools | 16 | list metrics + get metric data + alarm rules/histories + resource groups + event data |
 | Config / client | 16 | Settings validation, client factory, caching |
 | Gateway auth | 10 | JWT verify + RBAC + Identity injection + permanent token |
 | Gateway dev mode | 10 | No JWT / loopback / open / disabled |

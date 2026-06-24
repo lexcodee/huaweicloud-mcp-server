@@ -77,6 +77,36 @@ def _ensure_registry() -> None:
         "project_id_in_creds": True,
     }
 
+    # LTS — same auth shape as ECS/CTS (project-scoped).
+    from huaweicloudsdklts.v2.lts_client import LtsClient
+    from huaweicloudsdklts.v2.region.lts_region import LtsRegion
+
+    _SERVICE_REGISTRY["lts"] = {
+        "client_cls": LtsClient,
+        "region_cls": LtsRegion,
+        "project_id_in_creds": True,
+    }
+
+    # CES v2 — Cloud Eye Service (project-scoped).
+    from huaweicloudsdkces.v2.ces_client import CesClient
+    from huaweicloudsdkces.v2.region.ces_region import CesRegion
+
+    _SERVICE_REGISTRY["ces"] = {
+        "client_cls": CesClient,
+        "region_cls": CesRegion,
+        "project_id_in_creds": True,
+    }
+
+    # CES v1 — needed for list_metrics, show_metric_data, list_events.
+    from huaweicloudsdkces.v1.ces_client import CesClient as CesV1Client
+    from huaweicloudsdkces.v1.region.ces_region import CesRegion as CesV1Region
+
+    _SERVICE_REGISTRY["ces_v1"] = {
+        "client_cls": CesV1Client,
+        "region_cls": CesV1Region,
+        "project_id_in_creds": True,
+    }
+
 
 def _build_http_config(settings: Settings) -> HttpConfig:
     cfg = HttpConfig.get_default_config()

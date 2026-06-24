@@ -35,7 +35,7 @@ VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 SERVER_NAME = "huaweicloud-mcp-server"
 
-ALL_SERVICES = ("ecs", "pipeline", "cts", "cce")
+ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces")
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -185,6 +185,34 @@ def build_server(
             "initialNodeCount (scale-down uses two-phase commit), and download "
             "a cluster kubeconfig. Treat kubeconfig output as a secret."
         )
+    if "lts" in enabled:
+        instructions_parts.append(
+            "LTS (Log Tank Service): search/inspect logs and triage alarms. "
+            "Discovery flow — first call lts_query_log_resources(log_group_id=None) "
+            "to enumerate log groups, then lts_query_log_resources(log_group_id=...) "
+            "to list streams under a group, then lts_search_logs(...) with the "
+            "(group_id, stream_id) pair. Use lts_get_log_context to fetch N lines "
+            "around a specific line_num for causal-chain analysis, and "
+            "lts_query_histogram for time-bucketed counts when triaging spikes. "
+            "lts_query_alarm_rules dispatches list-vs-detail like the discovery "
+            "tool; lts_list_alarm_history returns recent triggered alarm events. "
+            "Read-only — no destructive ops exposed."
+        )
+    if "ces" in enabled:
+        instructions_parts.append(
+            "CES (Cloud Eye Service): monitor metrics, alarm rules, and events. "
+            "Discovery flow — call ces_list_metrics(namespace='SYS.ECS') to find "
+            "available metric names, then ces_get_metric_data(metrics=[...]) to "
+            "query time-series data (accepts multiple metrics in one call). "
+            "ces_query_alarm_rules dispatches list-vs-detail: omit alarm_id to "
+            "list rules, set alarm_id to get detail (policies + resources). "
+            "ces_list_alarm_histories returns alarm firing records. "
+            "ces_query_resource_groups dispatches list-vs-detail: omit group_id "
+            "to list groups, set group_id to get detail with resources. "
+            "ces_list_event_data dispatches list-vs-detail: omit event_name to "
+            "list events, set event_name to get detail. "
+            "Read-only — no destructive ops exposed."
+        )
 
     mcp = FastMCP(
         SERVER_NAME,
@@ -210,6 +238,14 @@ def build_server(
     if "cce" in enabled:
         from .services.cce.make_tools import make_tools as _cce_tools
         tools.update(_cce_tools(settings))
+
+    if "lts" in enabled:
+        from .services.lts.make_tools import make_tools as _lts_tools
+        tools.update(_lts_tools(settings))
+
+    if "ces" in enabled:
+        from .services.ces.make_tools import make_tools as _ces_tools
+        tools.update(_ces_tools(settings))
 
     # Resolve include/exclude: explicit kwargs win, otherwise fall back to env.
     include_patterns = _normalise_patterns(include)

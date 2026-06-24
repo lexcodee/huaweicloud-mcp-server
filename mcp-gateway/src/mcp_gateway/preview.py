@@ -254,9 +254,38 @@ def _build_service_report(svc: ServiceConfig) -> ServiceReport:
         report.tools = tools
         return report
 
+    except ModuleNotFoundError as exc:
+        # Most common cause: ``mcp-gateway`` was launched with a Python
+        # interpreter that doesn't have the service package installed.
+        # On a developer box this almost always means the user forgot to
+        # ``source .venv/bin/activate`` and is running a system-wide
+        # ``/usr/local/bin/mcp-gateway`` whose shebang points elsewhere.
+        report.build_error = (
+            f"{type(exc).__name__}: {exc}\n"
+            f"           {_interpreter_hint(svc.module)}"
+        )
+        return report
+
     except Exception as exc:  # noqa: BLE001
         report.build_error = f"{type(exc).__name__}: {exc}"
         return report
+
+
+def _interpreter_hint(missing_module: str) -> str:
+    """Build a hint pointing the operator at the active interpreter / venv.
+
+    Surfaces the running Python executable, whether a venv appears active,
+    and the concrete fix. Kept on one line per output line so it slots into
+    both text and JSON ``build_error`` payloads cleanly.
+    """
+    in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    venv_marker = f"venv={sys.prefix}" if in_venv else "venv=NOT ACTIVE"
+    return (
+        f"HINT: check the running interpreter — python={sys.executable}  {venv_marker}. "
+        f"If this is the system mcp-gateway, ensure '{missing_module}' is installed "
+        f"in that interpreter, or re-run inside the project venv "
+        f"(e.g. `source .venv/bin/activate && mcp-gateway config preview ...`)."
+    )
 
 
 def _coerce_patterns(value: Any) -> list[str]:

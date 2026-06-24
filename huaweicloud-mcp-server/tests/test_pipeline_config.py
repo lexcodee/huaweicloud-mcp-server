@@ -39,6 +39,32 @@ def test_load_settings_happy(monkeypatch):
     assert masked["secret_access_key"].startswith("SKYY")
 
 
+def test_codearts_project_id_does_not_fall_back_to_iaas_project_id(monkeypatch):
+    """CODEARTS_DEFAULT_PROJECT_ID and HUAWEICLOUD_PROJECT_ID are different ids.
+
+    Setting only HUAWEICLOUD_PROJECT_ID must NOT populate default_project_id,
+    and resolve_project_id() must raise MISSING_PROJECT_ID rather than silently
+    using the IaaS project id for Pipeline calls.
+    """
+    from huaweicloud_mcp.config import resolve_project_id
+    from huaweicloud_mcp.errors import ToolError
+
+    monkeypatch.setenv("HUAWEICLOUD_ACCESS_KEY_ID", "AKID" + "X" * 16)
+    monkeypatch.setenv("HUAWEICLOUD_SECRET_ACCESS_KEY", "SK" + "Y" * 38)
+    monkeypatch.setenv("HUAWEICLOUD_REGION", "af-south-1")
+    monkeypatch.setenv("HUAWEICLOUD_PROJECT_ID", "iaas-project-id")
+    monkeypatch.delenv("CODEARTS_DEFAULT_PROJECT_ID", raising=False)
+
+    s = load_settings()
+    assert s.project_id == "iaas-project-id"
+    assert s.default_project_id == ""  # no silent fallback
+
+    with pytest.raises(ToolError) as exc:
+        resolve_project_id(s, supplied=None)
+    assert exc.value.code == "MISSING_PROJECT_ID"
+    assert "CODEARTS_DEFAULT_PROJECT_ID" in exc.value.message
+
+
 def test_secret_masking_filter_replaces_known_secret():
     f = SecretMaskingFilter(known_secrets=["SUPERSECRETVALUE12345"])
     record = logging.LogRecord(

@@ -473,10 +473,12 @@ version = "0.1.0"
 source = { editable = "huaweicloud-mcp-server" }
 dependencies = [
     { name = "huaweicloudsdkcce" },
+    { name = "huaweicloudsdkces" },
     { name = "huaweicloudsdkcodeartspipeline" },
     { name = "huaweicloudsdkcore" },
     { name = "huaweicloudsdkcts" },
     { name = "huaweicloudsdkecs" },
+    { name = "huaweicloudsdklts" },
     { name = "mcp", extra = ["cli"] },
     { name = "mcp-auth-common" },
     { name = "pydantic" },
@@ -499,10 +501,12 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huaweicloudsdkcce", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkcce", specifier = ">=3.1.200" },
+    { name = "huaweicloudsdkces", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkcodeartspipeline", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkcore", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkcts", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkecs", specifier = ">=3.1.100" },
+    { name = "huaweicloudsdklts", specifier = ">=3.1.100" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.2.0" },
     { name = "mcp-auth-common", editable = "mcp-auth-common" },
     { name = "pydantic", specifier = ">=2.6" },
@@ -523,6 +527,17 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/01/af/2a4c4c80873c31277781018cea3bd7e7feb98f688af861a24df84d2a86f0/huaweicloudsdkcce-3.1.200-py3-none-any.whl", hash = "sha256:3c4d9cc05aab08b842f0a7ed4f761f3891aaffbd7d469f7b17e73bcb38242dfa", size = 1170694, upload-time = "2026-06-18T08:48:59.477Z" },
+]
+
+[[package]]
+name = "huaweicloudsdkces"
+version = "3.1.200"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huaweicloudsdkcore" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/05/a936d20e42d47ab5954c495b1d67264b56564561c03d8837ea74debc49b6/huaweicloudsdkces-3.1.200-py3-none-any.whl", hash = "sha256:c6ac501fa93e5932fd593aa8fb5975b3581902520c02b5541f1dfc777b4b0d40", size = 827669, upload-time = "2026-06-18T08:49:04.384Z" },
 ]
 
 [[package]]
@@ -574,6 +589,17 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/02/d1/f36e915ca78db9b45d971b1f0e84e05910dbc0b4195c5c499c4c7aef12aa/huaweicloudsdkecs-3.1.200-py3-none-any.whl", hash = "sha256:800ab30d5a1645e8105084a210762d438ee3c5431797b86f31b7234d23d4449f", size = 765400, upload-time = "2026-06-18T08:50:06.07Z" },
+]
+
+[[package]]
+name = "huaweicloudsdklts"
+version = "3.1.200"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huaweicloudsdkcore" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/1d/c74b3de93fd79d4b3a59e4a038d0ce36b5b21bb3bafbe3c302d8bc318a9d/huaweicloudsdklts-3.1.200-py3-none-any.whl", hash = "sha256:6c79d7c0404d9398036ec71c0f018d687f55b523492ae7c92a609d448614ed72", size = 582393, upload-time = "2026-06-18T08:51:02.493Z" },
 ]
 
 [[package]]

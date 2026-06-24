@@ -39,7 +39,7 @@ services:
     module: huaweicloud_mcp
     attr: build_server
     build_kwargs:
-      enabled: [ecs, pipeline, cts, cce]
+      enabled: [ecs, pipeline, cts, cce, lts]
       # Optional per-tool filters. Both are fnmatch globs evaluated against
       # the tool name (e.g. ``ecs_list_servers``). ``include`` runs first
       # (keep only matches), then ``exclude`` removes from the result.
@@ -61,7 +61,7 @@ services:
   #   module: huaweicloud_mcp
   #   attr: build_server
   #   build_kwargs:
-  #     enabled: [ecs, pipeline, cts, cce]
+  #     enabled: [ecs, pipeline, cts, cce, lts]
   #     exclude:
   #       - "*_confirm_destructive"   # two-phase commit confirm step
   #       - "*_set_status"            # pipeline enable/disable
