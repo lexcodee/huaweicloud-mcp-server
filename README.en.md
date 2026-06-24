@@ -60,74 +60,6 @@ huaweicloud-mcp-server/          # ← workspace root
     └── deploy/                    ← systemd + Nginx config
 ```
 
-### huaweicloud_mcp internal architecture
-
-```
-huaweicloud_mcp/
-├── __init__.py
-├── config.py          # Unified Settings dataclass + load_settings()
-├── client.py          # SDK client factory: get_client("ecs", settings) — lru_cached
-├── errors.py          # ToolError, wrap_tool decorator, PendingActions (two-phase commit)
-├── logging_setup.py   # SecretMaskingFilter + setup_logging()
-├── server.py          # build_server(enabled={"ecs","pipeline","cts","cce","lts","ces"}) → FastMCP
-├── app.py             # ASGI entrypoint for SSE/HTTP (with keep-alive middleware)
-└── services/
-    ├── ecs/
-    │   ├── make_tools.py    # make_tools(settings) → dict of tool callables
-    │   ├── models.py        # Pydantic input models
-    │   ├── serializers.py   # SDK response → plain dict
-    │   └── tools/
-    │       ├── query.py     # list_servers, get_server, list_flavors
-    │       ├── lifecycle.py # power_action, delete_server, resize_server, confirm_destructive
-    │       └── job.py       # get_job_status
-    ├── pipeline/
-    │   ├── make_tools.py
-    │   ├── models.py
-    │   ├── serializers.py
-    │   ├── client_helpers.py    # SDK typed/untyped API workarounds
-    │   ├── definition_utils.py  # pipeline definition JSON manipulation
-    │   └── tools/
-    │       ├── query.py      # list, get_detail
-    │       ├── execution.py  # run
-    │       ├── lifecycle.py  # set_status, confirm_destructive
-    │       └── update.py     # update_info, confirm_destructive
-    └── cts/
-        ├── make_tools.py
-        ├── models.py
-        ├── serializers.py
-        ├── time_utils.py     # human time → 13-digit UTC ms
-        ├── mask_utils.py     # sensitive value masking
-        └── tools/
-            ├── search.py     # search_traces
-            └── detail.py     # get_trace_detail
-    └── cce/
-        ├── make_tools.py
-        ├── models.py
-        ├── serializers.py
-        └── tools/
-            ├── query.py      # query_clusters, query_nodes, query_nodepools
-            ├── update.py     # update_nodepool, confirm_destructive
-            └── job.py        # get_job
-    └── lts/
-        ├── make_tools.py
-        ├── models.py
-        ├── serializers.py
-        └── tools/
-            ├── discovery.py  # query_log_resources (groups → streams)
-            ├── search.py     # search_logs, get_log_context, query_histogram
-            └── alarm.py      # query_alarm_rules, list_alarm_history
-    └── ces/
-        ├── make_tools.py
-        ├── models.py
-        ├── serializers.py
-        ├── _time.py         # Time window resolution (reuses CTS time_utils)
-        └── tools/
-            ├── metric.py     # list_metrics, get_metric_data
-            ├── alarm.py      # query_alarm_rules, list_alarm_histories
-            ├── resource_group.py  # query_resource_groups
-            └── event.py      # list_event_data
-```
-
 ### Shared infrastructure
 
 | Module | Purpose |
@@ -141,73 +73,28 @@ huaweicloud_mcp/
 
 ## MCP tools (34 total)
 
-### ECS — Cloud server lifecycle management (8 tools)
-
-| Tool | Description | Min role |
-|------|-------------|----------|
-| `ecs_list_servers` | List servers (filters: name, status, IP, tags) | readonly |
-| `ecs_get_server` | Server detail or status snapshot | readonly |
-| `ecs_list_flavors` | Available instance types | readonly |
-| `ecs_get_job_status` | Async job status poll | readonly |
-| `ecs_power_action` | Batch start / stop / reboot | operator / admin |
-| `ecs_delete_server` | ⚠ Delete servers (+ optional EIP/volumes) | admin |
-| `ecs_resize_server` | ⚠ Change flavor (vCPU/RAM) | admin |
-| `ecs_confirm_destructive` | Execute pending destructive op | — |
-
-### Pipeline — CodeArts pipeline management (6 tools)
-
-| Tool | Description | Min role |
-|------|-------------|----------|
-| `pipeline_list` | List pipelines + latest-run status | readonly |
-| `pipeline_get_detail` | Full pipeline config | readonly |
-| `pipeline_run` | Trigger a run | operator |
-| `pipeline_set_status` | ⚠ Enable/disable pipeline | admin |
-| `pipeline_update_info` | ⚠ Update default branch / trigger | admin |
-| `pipeline_confirm_destructive` | Execute pending destructive op | — |
-
-### CTS — Audit log search (2 tools)
-
-| Tool | Description | Min role |
-|------|-------------|----------|
-| `cts_search_traces` | Search audit events (7-day window) | readonly |
-| `cts_get_trace_detail` | Full masked request/response body | readonly |
-
-### CCE — Cloud container engine management (6 tools)
-
-| Tool | Description | Min role |
-|------|-------------|----------|
-| `cce_query_clusters` | List clusters / get single cluster detail | readonly |
-| `cce_query_nodes` | List cluster nodes / get single node detail | readonly |
-| `cce_query_nodepools` | List node pools / get single pool detail | readonly |
-| `cce_update_nodepool` | ⚠ Resize node pool desired count (scale-down requires two-phase confirm; DefaultPool scaling not supported) | operator |
-| `cce_get_job` | Poll async job status (cluster create/upgrade/node-pool resize etc.) | readonly |
-| `cce_confirm_destructive` | Execute pending destructive op (scale-down) | — |
-
-### LTS — Log Tank Service (6 tools)
-
-| Tool | Description | Min role |
-|------|-------------|----------|
-| `lts_query_log_resources` | List log groups / list streams under a group (dispatch: log_group_id=None → groups, set → streams) | readonly |
-| `lts_search_logs` | Keyword / SQL log search | readonly |
-| `lts_get_log_context` | Fetch N lines around a specific line_num (causal-chain analysis) | readonly |
-| `lts_query_histogram` | Time-bucketed counts (locate log spikes) | readonly |
-| `lts_query_alarm_rules` | List alarm rules / get single rule detail (dispatch: rule_id=None → list, set → detail) | readonly |
-| `lts_list_alarm_history` | Recently triggered alarm events | readonly |
-
-### CES — Cloud Eye Service (6 tools)
-
-| Tool | Description | Min role |
-|------|-------------|----------|
-| `ces_list_metrics` | List available metrics (filter by namespace/dimension/resource ID); prerequisite for `ces_get_metric_data` | readonly |
-| `ces_get_metric_data` | Query metric time-series data; accepts multiple metrics in one call (merges get_metric_data + batch_get_metric_data) | readonly |
-| `ces_query_alarm_rules` | List alarm rules / get single rule detail with policies and resources (dispatch: alarm_id=None → list, set → detail) | readonly |
-| `ces_list_alarm_histories` | Query alarm history records (incident post-mortem) | readonly |
-| `ces_query_resource_groups` | List resource groups / get group detail with resources (dispatch: group_id=None → list, set → detail) | readonly |
-| `ces_list_event_data` | List event monitoring data / get event detail (dispatch: event_name=None → list, set → detail) | readonly |
-
-> Common namespaces: `SYS.ECS` (cloud servers), `SYS.RDS` (relational DB), `SYS.DCS` (Redis cache), `SYS.ELB` (load balancer), `SYS.CCE` (container cluster nodes), `SYS.FunctionGraph` (function compute)
+| Service | Tools | Key tools | Min role |
+|---------|-------|-----------|----------|
+| ECS | 8 | list/get/power/delete/resize | readonly → admin |
+| Pipeline | 6 | list/get/run/update/toggle | readonly → admin |
+| CTS | 2 | search_traces/get_trace_detail | readonly |
+| CCE | 6 | query clusters/nodes/nodepools, update nodepool | readonly → operator |
+| LTS | 6 | search_logs/get_context/histogram/alarm | readonly |
+| CES | 6 | list_metrics/get_data/alarm_rules/events | readonly |
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
+>
+> Per-tool details (parameters, return values, role requirements): [docs/TOOLS.en.md](docs/TOOLS.en.md)
+
+## Agent query examples
+
+Natural-language query examples per service, cross-service orchestration scenarios, and two-phase commit dialog templates: [example.md](example.md).
+
+| Section | Content |
+|---------|---------|
+| ECS / Pipeline / CTS / CCE / LTS / CES | Per-tool query examples + composite scenarios |
+| Cross-service scenarios | Incident post-mortem, pre-deploy checks, CCE capacity planning, alarm storm triage, resource audit snapshot |
+| Two-phase commit | Dialog template for destructive ops (preview → confirm → confirm_destructive) |
 
 ---
 
@@ -312,12 +199,27 @@ Edit `.env` in the repo root:
 ```bash
 # Huawei Cloud credentials (shared by all services)
 HUAWEICLOUD_ACCESS_KEY_ID=your-ak
-HUAWEICLOUD_SECRET_ACCESS_KEY=your-s...n
+HUAWEICLOUD_SECRET_ACCESS_KEY=your-sk
+HUAWEICLOUD_REGION=cn-north-4
+HUAWEICLOUD_PROJECT_ID=your-project-id
+CODEARTS_DEFAULT_PROJECT_ID=your-codearts-project-id
+```
+
+> **stdio mode is ready at this point**: once env vars are set, skip to [Agent config — stdio (local dev)](#hermes-agent) below. No gateway needed.
+
+### 3. Start the gateway (gateway mode)
+
+> Only needed for gateway mode. Skip for stdio mode.
+
+Add gateway config to `.env`:
+
+```bash
 # Gateway auth mode (dev for local, jwt for production)
 MCP_GATEWAY_AUTH_MODE=dev
-M...n### 3. Start the gateway
+MCP_GATEWAY_HOST=127.0.0.1
+```
 
-Three options — pick any:
+Two options — pick either:
 
 **Option A — Start script (recommended)**
 
@@ -345,15 +247,7 @@ Common options:
 | `--log-level` | `MCP_GATEWAY_LOG_LEVEL` | `info` | Log level |
 | `--print-only` | — | — | Build app and print mount plan without starting uvicorn (debug) |
 
-**Option C — uvicorn direct ASGI app**
-
-```bash
-uvicorn mcp_gateway.gateway:app --factory --host 0.0.0.0 --port 8080
-```
-
-The module-level `app` is a lazy factory callable — `--factory` is required. Uvicorn resolves it on first request, avoiding import-time side effects.
-
-### 4. Verify
+### 4. Verify (gateway mode)
 
 ```bash
 curl http://127.0.0.1:8080/healthz
@@ -373,7 +267,7 @@ mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
 curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
 ```
 
-## Standalone stdio (local dev, no gateway)
+## stdio mode (local dev, no gateway)
 
 The unified server can run directly via stdio — no gateway or JWT needed:
 
