@@ -392,41 +392,6 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## Agent configuration
 
-> In stdio mode, MCP subprocesses do NOT inherit shell environment variables.
-> You must use `scripts/run-with-env.sh` to inject credentials from `.env`.
-> Do NOT put AK/SK in the Agent config file's `env:` block — these files are
-> typically not chmod 600 and may be synced via dotfile managers, leaking credentials.
-> In SSE mode, auth is handled by the gateway; the Agent only sends a JWT token.
-
-### stdio unified entry point: `scripts/run-with-env.sh`
-
-The project ships `scripts/run-with-env.sh`, which loads `.env` and starts the
-MCP Server in stdio mode. **All Agents share this script** — no need to create
-separate wrappers.
-
-```bash
-#!/usr/bin/env bash
-set -e
-ENV_FILE="${HWC_MCP_ENV_FILE:-/path/to/huaweicloud-mcp-server/.env}"
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  source "$ENV_FILE"
-  set +a
-fi
-exec /path/to/huaweicloud-mcp-server/.venv/bin/huaweicloud-mcp-server "$@"
-```
-
-Before first use, ensure permissions:
-
-```bash
-chmod +x scripts/run-with-env.sh
-chmod 600 .env          # credentials file: owner-read only
-```
-
-Optional: set `MCP_ENABLED_SERVICES=ecs,pipeline` in `.env` to enable only a
-subset of services, or `MCP_EXCLUDE_TOOLS=*_confirm_destructive` to exclude
-specific tools.
-
 ### Hermes Agent
 
 Add to `~/.hermes/config.yaml` (use `hermes config set`, do NOT edit directly):

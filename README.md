@@ -394,35 +394,6 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## Agent 配置
 
-> stdio 模式下 MCP 子进程不继承 shell 环境变量，必须通过 `scripts/run-with-env.sh` 注入 `.env` 中的凭据。
-> 不要将 AK/SK 写入 Agent 配置文件的 `env:` 块（文件非 0600，存在泄露风险）。
-> SSE 模式通过网关鉴权，凭证在网关侧配置，Agent 侧仅传 JWT token。
-
-### stdio 统一入口：`scripts/run-with-env.sh`
-
-项目内置 `scripts/run-with-env.sh`，负责加载 `.env` 后以 stdio 模式启动 MCP Server。**所有 Agent 共用此脚本**，无需各自创建 wrapper。
-
-```bash
-#!/usr/bin/env bash
-set -e
-ENV_FILE="${HWC_MCP_ENV_FILE:-/path/to/huaweicloud-mcp-server/.env}"
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  source "$ENV_FILE"
-  set +a
-fi
-exec /path/to/huaweicloud-mcp-server/.venv/bin/huaweicloud-mcp-server "$@"
-```
-
-首次使用前确保权限：
-
-```bash
-chmod +x scripts/run-with-env.sh
-chmod 600 .env          # 确保凭据文件仅 owner 可读
-```
-
-可选：在 `.env` 中设置 `MCP_ENABLED_SERVICES=ecs,pipeline` 仅启用服务子集，或 `MCP_EXCLUDE_TOOLS=*_confirm_destructive` 排除特定工具。
-
 ### Hermes Agent
 
 添加到 `~/.hermes/config.yaml`（用 `hermes config set`，不要直接编辑）：
