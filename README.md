@@ -394,21 +394,13 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## Agent 配置
 
-> stdio 模式下 Hermes MCP 子进程不继承 shell 环境变量，必须通过 wrapper 脚本注入 `.env` 中的凭据。
-> 不要将 AK/SK 写入 `config.yaml` 的 `env:` 块（文件非 0600，存在泄露风险）。
+> stdio 模式下 MCP 子进程不继承 shell 环境变量，必须通过 `scripts/run-with-env.sh` 注入 `.env` 中的凭据。
+> 不要将 AK/SK 写入 Agent 配置文件的 `env:` 块（文件非 0600，存在泄露风险）。
 > SSE 模式通过网关鉴权，凭证在网关侧配置，Agent 侧仅传 JWT token。
 
-### Hermes Agent
+### stdio 统一入口：`scripts/run-with-env.sh`
 
-添加到 `~/.hermes/config.yaml`。
-
-**stdio（本地开发，推荐）**
-
-> ⚠ Hermes MCP 子进程不继承 shell 环境变量，直接 `command: .venv/bin/huaweicloud-mcp-server` 会因缺少 AK/SK 启动失败。
-> 不要用 `env:` 块把凭据写进 config.yaml（文件非 0600，可能被 dotfile sync 泄露）。
-> 推荐用 wrapper 脚本注入凭据。
-
-**Step 1** — 创建 wrapper 脚本 `scripts/run-with-env.sh`：
+项目内置 `scripts/run-with-env.sh`，负责加载 `.env` 后以 stdio 模式启动 MCP Server。**所有 Agent 共用此脚本**，无需各自创建 wrapper。
 
 ```bash
 #!/usr/bin/env bash
@@ -419,15 +411,23 @@ if [[ -f "$ENV_FILE" ]]; then
   source "$ENV_FILE"
   set +a
 fi
-exec /path/to/.venv/bin/huaweicloud-mcp-server "$@"
+exec /path/to/huaweicloud-mcp-server/.venv/bin/huaweicloud-mcp-server "$@"
 ```
+
+首次使用前确保权限：
 
 ```bash
 chmod +x scripts/run-with-env.sh
 chmod 600 .env          # 确保凭据文件仅 owner 可读
 ```
 
-**Step 2** — 注册到 Hermes（用 `hermes config set`，不要直接编辑 config.yaml）：
+可选：在 `.env` 中设置 `MCP_ENABLED_SERVICES=ecs,pipeline` 仅启用服务子集，或 `MCP_EXCLUDE_TOOLS=*_confirm_destructive` 排除特定工具。
+
+### Hermes Agent
+
+添加到 `~/.hermes/config.yaml`（用 `hermes config set`，不要直接编辑）：
+
+**stdio（本地开发，推荐）**
 
 ```bash
 hermes config set "mcp_servers.huaweicloud.command" /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
@@ -445,8 +445,6 @@ mcp_servers:
     connect_timeout: 30
 ```
 
-可选：仅启用服务子集，在 `.env` 中设置 `MCP_ENABLED_SERVICES=ecs,pipeline`。
-
 **SSE via 网关（生产）**
 
 ```yaml
@@ -457,7 +455,7 @@ mcp_servers:
     timeout: 120
     connect_timeout: 30
     headers:
-      Authorization: Bearer eyJhbG...
+      Authorization: Bearer ***
 ```
 
 验证：
@@ -478,15 +476,8 @@ hermes mcp test huaweicloud
 {
   "mcpServers": {
     "huaweicloud": {
-      "command": "/path/to/.venv/bin/huaweicloud-mcp-server",
-      "timeout": 120,
-      "env": {
-        "HUAWEICLOUD_ACCESS_KEY_ID": "your_ak",
-        "HUAWEICLOUD_SECRET_ACCESS_KEY": "your_sk",
-        "HUAWEICLOUD_REGION": "af-south-1",
-        "HUAWEICLOUD_PROJECT_ID": "your_project_id",
-        "CODEARTS_DEFAULT_PROJECT_ID": "your_pipeline_project_id"
-      }
+      "command": "/path/to/huaweicloud-mcp-server/scripts/run-with-env.sh",
+      "timeout": 120
     }
   }
 }
@@ -509,10 +500,16 @@ hermes mcp test huaweicloud
 }
 ```
 
-### Claude Desktop / Cursor / Cline
+### Claude Desktop / Cursor / Windsurf / Cline
 
-添加到 `claude_desktop_config.json`（macOS: `~/Library/Application Support/Claude/`，
-Windows: `%APPDATA%\Claude\`）。
+配置文件位置：
+
+| Agent | 配置文件 |
+|-------|---------|
+| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`，Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Cline | VS Code 设置 → Cline MCP Servers |
 
 **stdio（本地开发）**
 
@@ -520,13 +517,7 @@ Windows: `%APPDATA%\Claude\`）。
 {
   "mcpServers": {
     "huaweicloud": {
-      "command": "/path/to/.venv/bin/huaweicloud-mcp-server",
-      "env": {
-        "HUAWEICLOUD_ACCESS_KEY_ID": "your_ak",
-        "HUAWEICLOUD_SECRET_ACCESS_KEY": "your_sk",
-        "HUAWEICLOUD_REGION": "af-south-1",
-        "HUAWEICLOUD_PROJECT_ID": "your_project_id"
-      }
+      "command": "/path/to/huaweicloud-mcp-server/scripts/run-with-env.sh"
     }
   }
 }

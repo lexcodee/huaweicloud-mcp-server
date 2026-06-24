@@ -392,23 +392,17 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## Agent configuration
 
-> In stdio mode, the Hermes MCP subprocess does NOT inherit shell environment
-> variables. You must use a wrapper script to inject credentials from `.env`.
-> Do NOT put AK/SK in `config.yaml`'s `env:` block — the file is not chmod 600
-> and may be synced via dotfile managers, leaking credentials.
+> In stdio mode, MCP subprocesses do NOT inherit shell environment variables.
+> You must use `scripts/run-with-env.sh` to inject credentials from `.env`.
+> Do NOT put AK/SK in the Agent config file's `env:` block — these files are
+> typically not chmod 600 and may be synced via dotfile managers, leaking credentials.
 > In SSE mode, auth is handled by the gateway; the Agent only sends a JWT token.
 
-### Hermes Agent
+### stdio unified entry point: `scripts/run-with-env.sh`
 
-Add to `~/.hermes/config.yaml`.
-
-**stdio (local dev, recommended)**
-
-> ⚠ A bare `command: .venv/bin/huaweicloud-mcp-server` will fail — the subprocess
-> has no AK/SK. Do NOT use `env:` in config.yaml (credentials leak risk).
-> Use a wrapper script instead.
-
-**Step 1** — Create wrapper script `scripts/run-with-env.sh`:
+The project ships `scripts/run-with-env.sh`, which loads `.env` and starts the
+MCP Server in stdio mode. **All Agents share this script** — no need to create
+separate wrappers.
 
 ```bash
 #!/usr/bin/env bash
@@ -419,15 +413,25 @@ if [[ -f "$ENV_FILE" ]]; then
   source "$ENV_FILE"
   set +a
 fi
-exec /path/to/.venv/bin/huaweicloud-mcp-server "$@"
+exec /path/to/huaweicloud-mcp-server/.venv/bin/huaweicloud-mcp-server "$@"
 ```
+
+Before first use, ensure permissions:
 
 ```bash
 chmod +x scripts/run-with-env.sh
 chmod 600 .env          # credentials file: owner-read only
 ```
 
-**Step 2** — Register with Hermes (use `hermes config set`, do NOT edit config.yaml directly):
+Optional: set `MCP_ENABLED_SERVICES=ecs,pipeline` in `.env` to enable only a
+subset of services, or `MCP_EXCLUDE_TOOLS=*_confirm_destructive` to exclude
+specific tools.
+
+### Hermes Agent
+
+Add to `~/.hermes/config.yaml` (use `hermes config set`, do NOT edit directly):
+
+**stdio (local dev, recommended)**
 
 ```bash
 hermes config set "mcp_servers.huaweicloud.command" /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
@@ -445,8 +449,6 @@ mcp_servers:
     connect_timeout: 30
 ```
 
-Optional: enable only a subset of services by setting `MCP_ENABLED_SERVICES=ecs,pipeline` in `.env`.
-
 **SSE via gateway (production)**
 
 ```yaml
@@ -457,7 +459,13 @@ mcp_servers:
     timeout: 120
     connect_timeout: 30
     headers:
-      Authorization: Bearer ***rmes mcp test huaweicloud
+      Authorization: Bearer ***
+```
+
+Verify:
+
+```bash
+hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
 #   ✓ Tools discovered: 34
 ```
@@ -472,15 +480,8 @@ Add to `~/.claude/mcp.json` (or project-level `.claude/mcp.json`).
 {
   "mcpServers": {
     "huaweicloud": {
-      "command": "/path/to/.venv/bin/huaweicloud-mcp-server",
-      "timeout": 120,
-      "env": {
-        "HUAWEICLOUD_ACCESS_KEY_ID": "your_ak",
-        "HUAWEICLOUD_SECRET_ACCESS_KEY": "your_sk",
-        "HUAWEICLOUD_REGION": "af-south-1",
-        "HUAWEICLOUD_PROJECT_ID": "your_project_id",
-        "CODEARTS_DEFAULT_PROJECT_ID": "your_pipeline_project_id"
-      }
+      "command": "/path/to/huaweicloud-mcp-server/scripts/run-with-env.sh",
+      "timeout": 120
     }
   }
 }
@@ -503,10 +504,16 @@ Add to `~/.claude/mcp.json` (or project-level `.claude/mcp.json`).
 }
 ```
 
-### Claude Desktop / Cursor / Cline
+### Claude Desktop / Cursor / Windsurf / Cline
 
-Add to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`,
-Windows: `%APPDATA%\Claude\`).
+Config file locations:
+
+| Agent | Config file |
+|-------|-------------|
+| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Cline | VS Code Settings → Cline MCP Servers |
 
 **stdio (local dev)**
 
@@ -514,13 +521,7 @@ Windows: `%APPDATA%\Claude\`).
 {
   "mcpServers": {
     "huaweicloud": {
-      "command": "/path/to/.venv/bin/huaweicloud-mcp-server",
-      "env": {
-        "HUAWEICLOUD_ACCESS_KEY_ID": "your_ak",
-        "HUAWEICLOUD_SECRET_ACCESS_KEY": "your_sk",
-        "HUAWEICLOUD_REGION": "af-south-1",
-        "HUAWEICLOUD_PROJECT_ID": "your_project_id"
-      }
+      "command": "/path/to/huaweicloud-mcp-server/scripts/run-with-env.sh"
     }
   }
 }
