@@ -13,6 +13,11 @@
 #   - export MCP_GATEWAY_ENABLED_SERVICES=huaweicloud      # path-level on/off
 #   - or run the underlying server with MCP_ENABLED_SERVICES=ecs,cts to
 #     shrink the tool set inside the single mount.
+#
+# To filter tools at a finer grain than service, use ``build_kwargs.include``
+# / ``build_kwargs.exclude`` (lists of fnmatch globs), or the equivalent
+# env vars MCP_INCLUDE_TOOLS / MCP_EXCLUDE_TOOLS. See the second service
+# entry below for an RBAC pattern (read-only mount).
 
 jwt:
   issuer: mcp-gateway
@@ -35,7 +40,35 @@ services:
     attr: build_server
     build_kwargs:
       enabled: [ecs, pipeline, cts, cce]
+      # Optional per-tool filters. Both are fnmatch globs evaluated against
+      # the tool name (e.g. ``ecs_list_servers``). ``include`` runs first
+      # (keep only matches), then ``exclude`` removes from the result.
+      # Examples:
+      #   include: [ecs_*, cts_*]
+      #   exclude: ["*_confirm_destructive"]
     mount_path: /hwc
     # Path-level (coarse) RBAC. Fine-grained per-tool checks (start vs
     # delete) live inside the tool implementations themselves.
     required_roles: [readonly, operator, admin]
+
+  # ----------------------------------------------------------------------
+  # OPTIONAL RBAC PATTERN — uncomment to expose a read-only mount that
+  # excludes every destructive / mutating tool. Issue readonly tokens
+  # bound to /hwc/ro and operator tokens bound to the full /hwc mount.
+  # ----------------------------------------------------------------------
+  # - name: huaweicloud-readonly
+  #   enabled: true
+  #   module: huaweicloud_mcp
+  #   attr: build_server
+  #   build_kwargs:
+  #     enabled: [ecs, pipeline, cts, cce]
+  #     exclude:
+  #       - "*_confirm_destructive"   # two-phase commit confirm step
+  #       - "*_set_status"            # pipeline enable/disable
+  #       - "*_update_*"              # pipeline_update_info, cce_update_nodepool
+  #       - "*_delete_*"              # ecs_delete_server
+  #       - "*_resize_*"              # ecs_resize_server
+  #       - "*_power_action"          # ecs_power_action (start/stop/reboot)
+  #       - "pipeline_run"            # pipeline execution trigger
+  #   mount_path: /hwc/ro
+  #   required_roles: [readonly, operator, admin]

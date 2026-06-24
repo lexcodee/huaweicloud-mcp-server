@@ -1,18 +1,30 @@
 """Unified FastMCP server entrypoint.
 
-build_server(enabled={"ecs", "pipeline", "cts"}) builds a single FastMCP
+build_server(enabled={"ecs", "pipeline", "cts", "cce"}) builds a single FastMCP
 instance with tools from the selected Huawei Cloud services. Each service
 module exposes a make_tools(settings) -> dict[str, callable] function.
+
+Tool-level filtering: pass ``include`` / ``exclude`` (lists of fnmatch globs)
+to register only a subset of tools. Useful for RBAC mounts (read-only token
+gets a different mount that excludes ``*_set_status`` etc.) or for shrinking
+the LLM tool list per use-case. Both also accept env overrides:
+
+    MCP_INCLUDE_TOOLS="ecs_*,cts_*"
+    MCP_EXCLUDE_TOOLS="*_set_status,*_confirm_destructive,*_scale_*"
+
+Precedence: explicit kwargs > env vars. include filters first (kept only if
+at least one pattern matches), then exclude removes from the result.
 
 Transport is selected via MCP_TRANSPORT env var (stdio | sse | streamable-http),
 same as the original per-service servers.
 """
 from __future__ import annotations
 
+import fnmatch
 import logging
 import os
 import sys
-from typing import Optional
+from typing import Iterable, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -26,16 +38,94 @@ SERVER_NAME = "huaweicloud-mcp-server"
 ALL_SERVICES = ("ecs", "pipeline", "cts", "cce")
 
 
+def _split_csv(value: str | None) -> list[str]:
+    """Parse a comma-separated env var into a list of trimmed non-empty parts."""
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _normalise_patterns(value: Iterable[str] | str | None) -> list[str]:
+    """Accept None / str / iterable[str] from YAML or env, return a clean list."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return _split_csv(value)
+    out: list[str] = []
+    for item in value:
+        if item is None:
+            continue
+        s = str(item).strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def _filter_tools(
+    tools: dict,
+    include: list[str],
+    exclude: list[str],
+    *,
+    log: logging.Logger,
+) -> dict:
+    """Apply include then exclude glob filters to a tool-name dict.
+
+    Patterns are matched case-sensitively with :func:`fnmatch.fnmatchcase`,
+    consistent with tool names (which are all lowercase snake_case).
+    """
+    if not include and not exclude:
+        return tools
+
+    def _matches_any(name: str, patterns: list[str]) -> bool:
+        return any(fnmatch.fnmatchcase(name, pat) for pat in patterns)
+
+    kept: dict = {}
+    dropped_by_include: list[str] = []
+    dropped_by_exclude: list[str] = []
+    for name, fn in tools.items():
+        if include and not _matches_any(name, include):
+            dropped_by_include.append(name)
+            continue
+        if exclude and _matches_any(name, exclude):
+            dropped_by_exclude.append(name)
+            continue
+        kept[name] = fn
+
+    if include:
+        unmatched = [pat for pat in include if not any(fnmatch.fnmatchcase(n, pat) for n in tools)]
+        if unmatched:
+            log.warning("include patterns matched no tools: %s", unmatched)
+    if exclude:
+        unmatched = [pat for pat in exclude if not any(fnmatch.fnmatchcase(n, pat) for n in tools)]
+        if unmatched:
+            log.warning("exclude patterns matched no tools: %s", unmatched)
+    if dropped_by_include:
+        log.info("tool filter: %d tools not in include set: %s",
+                 len(dropped_by_include), sorted(dropped_by_include))
+    if dropped_by_exclude:
+        log.info("tool filter: %d tools excluded: %s",
+                 len(dropped_by_exclude), sorted(dropped_by_exclude))
+    return kept
+
+
 def build_server(
     enabled: Optional[list[str] | set[str]] = None,
     *,
+    include: Optional[list[str] | str] = None,
+    exclude: Optional[list[str] | str] = None,
     settings: Optional[Settings] = None,
 ) -> FastMCP:
     """Build a fully wired FastMCP server.
 
     Args:
-        enabled: Subset of {"ecs", "pipeline", "cts"} to register.
-                 Accepts a list (from YAML manifest) or set. Defaults to all three.
+        enabled: Subset of ``ALL_SERVICES`` to register. Accepts a list (from
+                 YAML manifest) or set. Defaults to all services. Env override:
+                 ``MCP_ENABLED_SERVICES``.
+        include: Optional fnmatch globs; only tools matching at least one
+                 pattern are registered. Applied before ``exclude``. Env
+                 override: ``MCP_INCLUDE_TOOLS`` (comma-separated).
+        exclude: Optional fnmatch globs; matching tools are removed. Applied
+                 after ``include``. Env override: ``MCP_EXCLUDE_TOOLS``.
         settings: Pre-loaded Settings. If None, loads from env.
     """
     if settings is None:
@@ -120,6 +210,16 @@ def build_server(
     if "cce" in enabled:
         from .services.cce.make_tools import make_tools as _cce_tools
         tools.update(_cce_tools(settings))
+
+    # Resolve include/exclude: explicit kwargs win, otherwise fall back to env.
+    include_patterns = _normalise_patterns(include)
+    if not include_patterns:
+        include_patterns = _split_csv(os.environ.get("MCP_INCLUDE_TOOLS"))
+    exclude_patterns = _normalise_patterns(exclude)
+    if not exclude_patterns:
+        exclude_patterns = _split_csv(os.environ.get("MCP_EXCLUDE_TOOLS"))
+
+    tools = _filter_tools(tools, include_patterns, exclude_patterns, log=log)
 
     for name, fn in tools.items():
         mcp.add_tool(fn, name=name)

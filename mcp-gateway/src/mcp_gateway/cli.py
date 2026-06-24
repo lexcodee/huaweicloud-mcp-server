@@ -9,6 +9,7 @@ import uvicorn
 
 from .gateway import DEFAULT_MANIFEST_PATH, build_app
 from .logfmt import setup_logging
+from .preview import run_preview
 from .token import add_token_subcommands
 
 
@@ -43,6 +44,18 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_preview(args: argparse.Namespace) -> int:
+    """Dry-run: print the mount + tool plan without binding any sockets."""
+    return run_preview(
+        args.manifest,
+        env_enabled=os.environ.get("MCP_GATEWAY_ENABLED_SERVICES"),
+        cli_enable=args.enable,
+        cli_disable=args.disable,
+        fmt=args.format,
+        show_filtered=args.show_filtered,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mcp-gateway", description="Multi-MCP gateway")
     subparsers = parser.add_subparsers(dest="command")
@@ -75,13 +88,50 @@ def main(argv: list[str] | None = None) -> int:
     )
     serve_p.set_defaults(func=_cmd_serve)
 
+    # --- config (parent for inspection sub-commands) ---
+    config_p = subparsers.add_parser(
+        "config",
+        help="Inspect or validate manifest.yaml without starting the server.",
+    )
+    config_sub = config_p.add_subparsers(dest="config_command", required=True)
+
+    preview_p = config_sub.add_parser(
+        "preview",
+        help=(
+            "Dry-run: load manifest, build every service factory in isolation, "
+            "and print the resulting mount + tool plan. Exits 1 if any service "
+            "fails to build."
+        ),
+    )
+    preview_p.add_argument(
+        "--manifest", default=DEFAULT_MANIFEST_PATH, help="Path to manifest.yaml"
+    )
+    preview_p.add_argument(
+        "--enable", action="append", default=None,
+        help="Comma-separated list of services to enable (preview only).",
+    )
+    preview_p.add_argument(
+        "--disable", action="append", default=None,
+        help="Comma-separated list of services to disable (preview only).",
+    )
+    preview_p.add_argument(
+        "--format", choices=("text", "json"), default="text",
+        help="Output format. Default: text.",
+    )
+    preview_p.add_argument(
+        "--show-filtered",
+        action="store_true",
+        help="In text mode, list each dropped tool with the pattern that excluded it.",
+    )
+    preview_p.set_defaults(func=_cmd_preview)
+
     # --- token sub-commands (keygen / create / verify) ---
     add_token_subcommands(subparsers)
 
     # If the first positional arg is a known subcommand, parse normally.
     # Otherwise, prepend 'serve' so bare flags like --print-only work.
     raw = argv if argv is not None else sys.argv[1:]
-    known_commands = {"serve", "token"}
+    known_commands = {"serve", "token", "config"}
     if raw and raw[0] in known_commands:
         args = parser.parse_args(argv)
     else:
