@@ -1,77 +1,80 @@
-# 华为云 MCP Server
+# Huawei Cloud MCP Server
 
-[English](README.en.md) | **中文**
+**English** | [中文](README.zh.md)
 
-一个 MCP Server 覆盖全部华为云服务。Agent 只需对接 **一个 URL**，即可访问所有已启用的云服务工具。按需启动服务子集，JWT 鉴权保障生产安全，新增云服务无需 Agent 侧任何配置变更。
+One MCP Server for all Huawei Cloud services. Agents connect to **one URL** and
+access every enabled cloud service tool. Enable only the services you need,
+secure production with JWT auth, and add new cloud services with **zero
+Agent-side config change**.
 
-**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）、CCE（云容器引擎）、LTS（日志服务）、CES（云监控）
-**开发中**：OBS（对象存储）、RDS（关系数据库）、VPC（虚拟网络）…
+**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine), LTS (log tank service), CES (cloud eye service)
+**Coming soon**: OBS (object storage), RDS (relational DB), VPC (virtual network)…
 
 ```
-https://example.com/hwc/sse    ← 全部华为云工具 (ecs_*, pipeline_*, cts_*, obs_*, …)
-https://example.com/healthz    ← 网关探活（免鉴权）
+https://example.com/hwc/sse    ← All Huawei Cloud tools (ecs_*, pipeline_*, cts_*, obs_*, …)
+https://example.com/healthz    ← Gateway health (no auth)
 ```
 
-**核心设计**：
+**Key design**:
 
-| 特性 | 说明 |
-|------|------|
-| 单 URL 对接 | Agent 配置一个 MCP Server 条目，永久不变 |
-| 按需启用 | service 级：`MCP_ENABLED_SERVICES=ecs,pipeline` 仅加载所需服务<br/>tool 级：`MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` 用 glob 进一步裁剪工具集 |
-| JWT 鉴权 | 生产环境 RS256 签验 + 角色 RBAC；本地开发免鉴权 |
-| 两阶段提交 | 破坏性操作（删除/关机/变更规格）需用户显式确认 |
-| 零配置扩展 | 新增云服务只改服务端，Agent 无感知 |
+| Feature | Description |
+|---------|-------------|
+| Single URL | Agent configures one MCP server entry, forever |
+| On-demand enable | Service-level: `MCP_ENABLED_SERVICES=ecs,pipeline` loads only what you need<br/>Tool-level: `MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` glob-filter individual tools |
+| JWT auth | RS256 verification + role RBAC for production; no auth for local dev |
+| Two-phase commit | Destructive ops (delete/stop/resize) require explicit user approval |
+| Zero-config growth | New cloud services are server-side only, Agent is unaware |
 
 ---
 
-## 项目结构
+## Project structure
 
 ```
-huaweicloud-mcp-server/          # ← workspace 根目录
-├── start.sh                       ← 启动脚本（加载 .env + 启动网关）
-├── .env                           ← 统一环境变量（AK/SK + JWT + 配置）
-├── .env.example                   ← 全量模板
-├── manifest.yaml                  ← 服务拓扑（单挂载 /hwc）
-├── pyproject.toml                 ← uv workspace 声明
+huaweicloud-mcp-server/          # ← workspace root
+├── start.sh                       ← Start script (loads .env + starts gateway)
+├── .env                           ← Unified env vars (AK/SK + JWT + config)
+├── .env.example                   ← Full template
+├── manifest.yaml                  ← Service topology (single mount /hwc)
+├── pyproject.toml                 ← uv workspace declaration
 │
-├── huaweicloud-mcp-server/        ← 统一华为云 MCP Server
+├── huaweicloud-mcp-server/        ← Unified Huawei Cloud MCP Server
 │   └── src/huaweicloud_mcp/
 │       ├── server.py              ← build_server(enabled=[...]) → FastMCP
-│       ├── config.py              ← 统一 Settings (AK/SK/region/project_id)
+│       ├── config.py              ← Unified Settings (AK/SK/region/project_id)
 │       ├── client.py              ← get_client(service, settings) — lru_cached
-│       ├── errors.py              ← ToolError, 两阶段提交
-│       ├── logging_setup.py       ← SecretMaskingFilter + 脱敏日志
+│       ├── errors.py              ← ToolError, two-phase commit
+│       ├── logging_setup.py       ← SecretMaskingFilter + redacted logging
 │       └── services/
-│           ├── ecs/               ← 8 工具 (list/get/power/delete/resize)
-│           ├── pipeline/          ← 6 工具 (list/get/run/update/toggle)
-│           ├── cts/               ← 2 工具 (search/get 审计事件)
-│           ├── cce/               ← 6 工具 (query clusters/nodes/nodepools, update nodepool, get_job)
-│           ├── lts/               ← 6 工具 (query log resources, search logs, alarm rules/history)
-│           └── ces/               ← 6 工具 (list metrics, get metric data, alarm rules/history, resource groups, events)
+│           ├── ecs/               ← 8 tools (list/get/power/delete/resize)
+│           ├── pipeline/          ← 6 tools (list/get/run/update/toggle)
+│           ├── cts/               ← 2 tools (search/get audit traces)
+│           ├── cce/               ← 6 tools (query clusters/nodes/nodepools, update nodepool, get_job)
+│           ├── lts/               ← 6 tools (query log resources, search logs, alarm rules/history)
+│           └── ces/               ← 6 tools (list metrics, get metric data, alarm rules/history, resource groups, events)
 │
-├── mcp-auth-common/               ← 共享鉴权库 (Identity / AutoAuth / require_role)
+├── mcp-auth-common/               ← Shared auth (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
 │
-└── mcp-gateway/                   ← ASGI 网关 (Starlette Mount + JWT 中间件)
+└── mcp-gateway/                   ← ASGI gateway (Starlette Mount + JWT middleware)
     ├── src/mcp_gateway/
-    └── deploy/                    ← systemd + Nginx 配置
+    └── deploy/                    ← systemd + Nginx config
 ```
 
-### 共享基础设施
+### Shared infrastructure
 
-| 模块 | 用途 |
-|------|------|
-| `config.py` | 单一 `Settings` dataclass — AK/SK/region/project_id/timezone。`load_settings()` 从环境变量读取，校验必需项，缺失时快速退出。 |
-| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS、CCE、LTS、CES 共用一个工厂，共享 HttpConfig（超时、重试）。 |
-| `errors.py` | `ToolError` 异常 + `wrap_tool` 装饰器：捕获 SDK 错误，标准化为 `{ok: false, error: {...}}` 信封，记录结构化事件。`PendingActions` 实现两阶段提交。 |
-| `logging_setup.py` | `SecretMaskingFilter` 在日志中脱敏 AK/SK。`setup_logging()` 配置仅 stderr（stdio 安全）或文件日志。 |
+| Module | Purpose |
+|--------|---------|
+| `config.py` | Single `Settings` dataclass — AK/SK/region/project_id/timezone. `load_settings()` reads from env, validates required vars, exits fast on missing. |
+| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE, LTS, CES clients with shared HttpConfig (timeout, retries). |
+| `errors.py` | `ToolError` exception + `wrap_tool` decorator that catches SDK errors, normalizes them to `{ok: false, error: {...}}` envelopes, and logs structured events. `PendingActions` implements the two-phase commit for destructive ops. |
+| `logging_setup.py` | `SecretMaskingFilter` redacts AK/SK in log output. `setup_logging()` configures stderr-only (stdio-safe) or file logging. |
 
 ---
 
-## MCP 工具一览（34 个）
+## MCP tools (34 total)
 
-| 服务 | 工具数 | 关键工具 | 最低角色 |
-|------|--------|----------|----------|
+| Service | Tools | Key tools | Min role |
+|---------|-------|-----------|----------|
 | ECS | 8 | list/get/power/delete/resize | readonly → admin |
 | Pipeline | 6 | list/get/run/update/toggle | readonly → admin |
 | CTS | 2 | search_traces/get_trace_detail | readonly |
@@ -79,51 +82,53 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 | LTS | 6 | search_logs/get_context/histogram/alarm | readonly |
 | CES | 6 | list_metrics/get_data/alarm_rules/events | readonly |
 
-> 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
+> Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 >
-> 各工具详细说明（参数、返回值、角色要求）见 [docs/TOOLS.md](docs/TOOLS.md)
+> Per-tool details (parameters, return values, role requirements): [docs/TOOLS.en.md](docs/TOOLS.md)
 
-## Agent 提问案例
+## Agent query examples
 
-各服务的自然语言提问示例、复合场景编排、两阶段确认对话模板见 [example.md](example.md)。
+Natural-language query examples per service, cross-service orchestration scenarios, and two-phase commit dialog templates: [example.md](docs/EXAMPLES.md).
 
-| 章节 | 内容 |
-|------|------|
-| ECS / Pipeline / CTS / CCE / LTS / CES | 每个工具对应的提问案例 + 复合场景 |
-| 跨服务复合场景 | 事故复盘、发布前置检查、CCE 容量规划、告警风暴定位、资源审计快照 |
-| 两阶段确认 | 破坏性操作的对话模板（preview → 确认 → confirm） |
+| Section | Content |
+|---------|---------|
+| ECS / Pipeline / CTS / CCE / LTS / CES | Per-tool query examples + composite scenarios |
+| Cross-service scenarios | Incident post-mortem, pre-deploy checks, CCE capacity planning, alarm storm triage, resource audit snapshot |
+| Two-phase commit | Dialog template for destructive ops (preview → confirm → confirm_destructive) |
 
 ---
 
-## 两阶段提交（破坏性操作）
+## Two-phase commit (destructive operations)
 
-破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线、缩容节点池）遵循两阶段提交模式，防止误操作：
+Destructive tools (stop, reboot, delete, resize, disable pipeline, update pipeline,
+scale-down node pool)
+follow a two-phase commit pattern to prevent accidental execution:
 
 ```
-阶段 1: 工具调用返回预览 + approval_id（TTL 120 秒）
+Phase 1: Tool call returns a preview + approval_id (TTL 120s)
          → {status: "pending_approval", approval_id: "...", preview: {...}}
 
-阶段 2: 用户显式确认
+Phase 2: User explicitly approves
          → ecs_confirm_destructive(approval_id="...")
-         → 操作执行，返回 {ok: true, data: {...}}
+         → Operation executes, returns {ok: true, data: {...}}
 ```
 
-若 approval_id 过期，重新发起原始调用获取新的 ID。
+If the approval ID expires, re-issue the original call to get a fresh one.
 
 ---
 
-## 网关架构
+## Gateway architecture
 
 ```
                           ┌──────────────────────────────────────┐
                           │       MCP Gateway (port 8080)        │
                           │                                      │
   Agent ──Bearer JWT──▶  │  GatewayAuthMiddleware                │
-                          │    ├─ JWT 验签 (RS256)               │
-                          │    ├─ 路径 RBAC（粗粒度）            │
-                          │    └─ 注入 Identity → scope          │
+                          │    ├─ JWT verify (RS256)             │
+                          │    ├─ Path RBAC (coarse)             │
+                          │    └─ Inject identity → scope        │
                           │                                      │
-                          │  单挂载点：                           │
+                          │  Single mount:                       │
                           │    /hwc  → build_server(             │
                           │             enabled=[ecs,pipeline,cts│
                           │                        ,cce,lts,ces]│
@@ -132,8 +137,8 @@ huaweicloud-mcp-server/          # ← workspace 根目录
                                     │
                                     ▼
                           ┌──────────────────┐
-                          │  统一 FastMCP     │
-                          │  34 个工具：      │
+                          │  Unified FastMCP  │
+                          │  34 tools:        │
                           │    ecs_* (8)      │
                           │    pipeline_* (6) │
                           │    cts_* (2)      │
@@ -143,56 +148,56 @@ huaweicloud-mcp-server/          # ← workspace 根目录
                           └──────────────────┘
 ```
 
-### 鉴权分层
+### Auth layers
 
-| 层级 | 职责 | 粒度 | 示例 |
-|------|------|------|------|
-| 网关中间件 | 验签 JWT → 解析 Identity → 路径 RBAC → 注入 scope | `/hwc/*` | 无 hwc 权限 → 403 |
-| MCP Server | 从 scope 读 Identity → 按 tool 名做角色判断 | `ecs_delete` vs `ecs_list` | 非 admin 调 delete → ToolError |
+| Layer | Responsibility | Granularity | Example |
+|-------|---------------|-------------|---------|
+| Gateway middleware | Verify JWT → parse Identity → path RBAC → inject scope | `/hwc/*` | No hwc permission → 403 |
+| MCP Server | Read Identity from scope → per-tool role check | `ecs_delete` vs `ecs_list` | Non-admin calls delete → ToolError |
 
-### Server 侧鉴权：自动检测，零配置
+### Server-side auth: auto-detect, zero config
 
-| 场景 | 行为 | 说明 |
-|------|------|------|
-| 在网关后面 | `scope["mcp_identity"]` 存在 → 直接使用 | 网关已验签，Identity 可信 |
-| 独立启动（stdio/SSE） | 无 gateway identity → 合成 dev Identity + ⚠ WARN | 本地开发，自动放行 |
+| Scenario | Behavior | Notes |
+|----------|----------|-------|
+| Behind gateway | `scope["mcp_identity"]` exists → use it | Gateway verified, Identity trusted |
+| Standalone (stdio/SSE) | No gateway identity → synthesize dev Identity + ⚠ WARN | Local dev, auto-allow |
 
-### 网关鉴权模式
+### Gateway auth modes
 
-| 模式 | 环境变量 | 行为 | 场景 |
-|------|---------|------|------|
-| `jwt` | `MCP_GATEWAY_AUTH_MODE=jwt`（默认） | 完整 JWT 验签 + 路径 RBAC | 生产 |
-| `dev` | `MCP_GATEWAY_AUTH_MODE=dev` | 跳过 JWT，合成 Identity | 非生产 |
+| Mode | Env var | Behavior | Use case |
+|------|---------|----------|----------|
+| `jwt` | `MCP_GATEWAY_AUTH_MODE=*** (default) | Full JWT verify + path RBAC | Production |
+| `dev` | `MCP_GATEWAY_AUTH_MODE=*** | Skip JWT, synthesize Identity | Non-production |
 
-dev 模式通过 `MCP_DEV_LOOPBACK_ONLY` 控制来源限制：
+Dev mode source restriction via `MCP_DEV_LOOPBACK_ONLY`:
 
-| 子模式 | 环境变量 | 行为 | 场景 |
-|--------|---------|------|------|
-| loopback-only | `MCP_DEV_LOOPBACK_ONLY=true`（默认） | 仅 loopback 调用者放行 | 本地开发 |
-| open | `MCP_DEV_LOOPBACK_ONLY=false` | 任何来源放行（CRITICAL 日志） | CI / 隔离测试 |
+| Sub-mode | Env var | Behavior | Use case |
+|----------|---------|----------|----------|
+| loopback-only | `MCP_DEV_LOOPBACK_ONLY=true` (default) | Only loopback callers allowed | Local dev |
+| open | `MCP_DEV_LOOPBACK_ONLY=false` | Any source allowed (CRITICAL log) | CI / isolated test |
 
 ---
 
-## 快速开始
+## Quick start
 
-### 前置条件
+### Prerequisites
 
 - Python 3.10+
-- [uv](https://docs.astral.sh/uv/)（推荐）或 pip
-- 华为云 AK/SK
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- Huawei Cloud AK/SK
 
-### 1. 安装依赖
+### 1. Install dependencies
 
 ```bash
 uv sync
 ```
 
-### 2. 配置环境变量
+### 2. Configure environment
 
-编辑根目录 `.env`：
+Edit `.env` in the repo root:
 
 ```bash
-# 华为云凭证（所有服务共用）
+# Huawei Cloud credentials (shared by all services)
 HUAWEICLOUD_ACCESS_KEY_ID=your-ak
 HUAWEICLOUD_SECRET_ACCESS_KEY=your-sk
 HUAWEICLOUD_REGION=cn-north-4
@@ -200,92 +205,92 @@ HUAWEICLOUD_PROJECT_ID=your-project-id
 CODEARTS_DEFAULT_PROJECT_ID=your-codearts-project-id
 ```
 
-> **stdio 模式到此已完成**：环境变量配好后，即可参考下方 [Agent 配置 — stdio（本地开发）](#hermes-agent) 直接使用，无需启动网关。
+> **stdio mode is ready at this point**: once env vars are set, skip to [Agent config — stdio (local dev)](#hermes-agent) below. No gateway needed.
 
-### 3. 启动网关（网关模式）
+### 3. Start the gateway (gateway mode)
 
-> 仅网关模式需要此步骤。stdio 模式跳过。
+> Only needed for gateway mode. Skip for stdio mode.
 
-在 `.env` 中追加网关配置：
+Add gateway config to `.env`:
 
 ```bash
-# 网关鉴权模式（本地用 dev，生产用 jwt）
+# Gateway auth mode (dev for local, jwt for production)
 MCP_GATEWAY_AUTH_MODE=dev
 MCP_GATEWAY_HOST=127.0.0.1
 ```
 
-两种方式任选其一：
+Two options — pick either:
 
-**方式 A — 启动脚本（推荐）**
+**Option A — Start script (recommended)**
 
-自动加载 `.env`，默认 `127.0.0.1:8080`：
+Auto-loads `.env`, defaults to `127.0.0.1:8080`:
 
 ```bash
 ./start.sh
 ```
 
-**方式 B — CLI 命令**
+**Option B — CLI command**
 
 ```bash
 mcp-gateway serve --manifest manifest.yaml --host 0.0.0.0 --port 8080 --log-level info
 ```
 
-常用选项：
+Common options:
 
-| 选项 | 环境变量 | 默认值 | 说明 |
-|------|---------|--------|------|
-| `--manifest` | `MCP_GATEWAY_MANIFEST` | `manifest.yaml` | 服务拓扑文件 |
-| `--enable <svc>` | `MCP_GATEWAY_ENABLED_SERVICES` | — | 启用指定服务（覆盖 manifest + 环境变量） |
-| `--disable <svc>` | — | — | 禁用指定服务 |
-| `--host` | `MCP_GATEWAY_HOST` | `0.0.0.0` | 监听地址 |
-| `--port` | `MCP_GATEWAY_PORT` | `8080` | 监听端口 |
-| `--log-level` | `MCP_GATEWAY_LOG_LEVEL` | `info` | 日志级别 |
-| `--print-only` | — | — | 仅构建 app 打印挂载计划，不启动 uvicorn（调试用） |
+| Flag | Env var | Default | Description |
+|------|---------|---------|-------------|
+| `--manifest` | `MCP_GATEWAY_MANIFEST` | `manifest.yaml` | Service topology file |
+| `--enable <svc>` | `MCP_GATEWAY_ENABLED_SERVICES` | — | Enable specific services (overrides manifest + env) |
+| `--disable <svc>` | — | — | Disable specific services |
+| `--host` | `MCP_GATEWAY_HOST` | `0.0.0.0` | Listen address |
+| `--port` | `MCP_GATEWAY_PORT` | `8080` | Listen port |
+| `--log-level` | `MCP_GATEWAY_LOG_LEVEL` | `info` | Log level |
+| `--print-only` | — | — | Build app and print mount plan without starting uvicorn (debug) |
 
-### 4. 验证（网关模式）
+### 4. Verify (gateway mode)
 
 ```bash
 curl http://127.0.0.1:8080/healthz
 # {"status":"ok","mounted":[{"name":"huaweicloud","mount_path":"/hwc"}]}
 ```
 
-### 5. 签发 JWT Token（生产环境）
+### 5. Issue JWT tokens (production)
 
 ```bash
-# 生成密钥对
+# Generate key pair
 mcp-gateway token keygen
 
-# 签发 token
+# Issue token
 mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
 
-# 携带 token 调用网关
+# Call gateway with token
 curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
 ```
 
-## stdio 模式（本地开发，无需网关）
+## stdio mode (local dev, no gateway)
 
-统一 Server 可直接通过 stdio 运行，无需网关或 JWT：
+The unified server can run directly via stdio — no gateway or JWT needed:
 
 ```bash
-# 全部服务（34 个工具）
+# All services (34 tools)
 huaweicloud-mcp-server
 
-# 仅启用子集
+# Subset only
 MCP_ENABLED_SERVICES=ecs,pipeline huaweicloud-mcp-server
 
-# SSE 模式
+# SSE mode
 MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 ```
 
 ---
 
-## Agent 配置
+## Agent configuration
 
 ### Hermes Agent
 
-添加到 `~/.hermes/config.yaml`（用 `hermes config set`，不要直接编辑）：
+Add to `~/.hermes/config.yaml` (use `hermes config set`, do NOT edit directly):
 
-**stdio（本地开发，推荐）**
+**stdio (local dev, recommended)**
 
 ```bash
 hermes config set "mcp_servers.huaweicloud.command" /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
@@ -293,7 +298,7 @@ hermes config set "mcp_servers.huaweicloud.timeout" 120
 hermes config set "mcp_servers.huaweicloud.connect_timeout" 30
 ```
 
-等效 YAML（仅供理解，不要手动写入）：
+Equivalent YAML (for reference only — do NOT write manually):
 
 ```yaml
 mcp_servers:
@@ -303,7 +308,7 @@ mcp_servers:
     connect_timeout: 30
 ```
 
-**SSE via 网关（生产）**
+**SSE via gateway (production)**
 
 ```yaml
 mcp_servers:
@@ -316,7 +321,7 @@ mcp_servers:
       Authorization: Bearer ***
 ```
 
-验证：
+Verify:
 
 ```bash
 hermes mcp test huaweicloud
@@ -326,9 +331,9 @@ hermes mcp test huaweicloud
 
 ### Claude Code
 
-添加到 `~/.claude/mcp.json`（或项目级 `.claude/mcp.json`）。
+Add to `~/.claude/mcp.json` (or project-level `.claude/mcp.json`).
 
-**stdio（本地开发）**
+**stdio (local dev)**
 
 ```json
 {
@@ -341,7 +346,7 @@ hermes mcp test huaweicloud
 }
 ```
 
-**SSE via 网关（生产）**
+**SSE via gateway (production)**
 
 ```json
 {
@@ -360,16 +365,16 @@ hermes mcp test huaweicloud
 
 ### Claude Desktop / Cursor / Windsurf / Cline
 
-配置文件位置：
+Config file locations:
 
-| Agent | 配置文件 |
-|-------|---------|
-| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`，Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
+| Agent | Config file |
+|-------|-------------|
+| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
 | Cursor | `~/.cursor/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
-| Cline | VS Code 设置 → Cline MCP Servers |
+| Cline | VS Code Settings → Cline MCP Servers |
 
-**stdio（本地开发）**
+**stdio (local dev)**
 
 ```json
 {
@@ -381,7 +386,7 @@ hermes mcp test huaweicloud
 }
 ```
 
-**SSE via 网关（生产）**
+**SSE via gateway (production)**
 
 ```json
 {
@@ -397,30 +402,32 @@ hermes mcp test huaweicloud
 }
 ```
 
-> **核心要点**：无论未来新增多少华为云服务，Agent 始终只需配置**一个** MCP Server 条目。新服务以新工具名（`obs_*`、`rds_*`、…）自动出现，无需 Agent 侧任何配置变更。
+> **Key point**: Regardless of how many Huawei Cloud services are added, the
+> Agent always configures **one** MCP server entry. New services appear as
+> additional tools (`obs_*`, `rds_*`, …) without any Agent-side config change.
 
 ---
 
 ## Token CLI
 
-网关内置 Token 管理命令行工具。
+The gateway ships a built-in token management CLI.
 
-### `mcp-gateway token keygen` — 生成 RSA 密钥对
+### `mcp-gateway token keygen` — Generate RSA key pair
 
 ```bash
-mcp-gateway token keygen                              # 默认: jwt-private.pem / jwt-public.pem / 2048 位
-mcp-gateway token keygen --bits 4096                  # 更强密钥
+mcp-gateway token keygen                              # defaults: jwt-private.pem / jwt-public.pem / 2048 bits
+mcp-gateway token keygen --bits 4096                  # stronger key
 mcp-gateway token keygen --private-key /etc/mcp/jwt-private.pem \
                           --public-key  /etc/mcp/jwt-public.pem
 ```
 
-### `mcp-gateway token create` — 签发 JWT
+### `mcp-gateway token create` — Sign a JWT
 
 ```bash
-# 最简 — 输出原始 JWT 字符串
+# Minimal — outputs raw JWT string
 mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
 
-# 完整选项
+# Full options
 mcp-gateway token create \
   --sub ops-bot \
   --roles operator,readonly \
@@ -431,47 +438,47 @@ mcp-gateway token create \
   --ttl 7200 \
   --format json
 
-# 永久 token（不过期）
+# Permanent token (never expires)
 mcp-gateway token create --sub service-account --roles admin --private-key jwt-private.pem --ttl 0
 ```
 
-| 标志 | 必需 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--sub` | 是 | — | 主体（用户或服务账号 ID） |
-| `--roles` | 是 | — | 逗号分隔角色列表 |
-| `--private-key` | 否 | `jwt-private.pem` | RSA 私钥 PEM 路径 |
-| `--issuer` | 否 | `mcp-gateway` | JWT `iss` 声明 |
-| `--audience` | 否 | — | JWT `aud` 声明 |
-| `--tenant` | 否 | — | 租户 / 项目 ID |
-| `--ttl` | 否 | `3600` | 有效期秒数；`0` = 永久 |
-| `--format` | 否 | `token` | `token`（原始 JWT）或 `json`（含元数据） |
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--sub` | Yes | — | Subject (user or service account id) |
+| `--roles` | Yes | — | Comma-separated role list |
+| `--private-key` | No | `jwt-private.pem` | Path to RSA private key PEM |
+| `--issuer` | No | `mcp-gateway` | JWT `iss` claim |
+| `--audience` | No | — | JWT `aud` claim |
+| `--tenant` | No | — | Tenant / project id |
+| `--ttl` | No | `3600` | Lifetime in seconds; `0` = permanent |
+| `--format` | No | `token` | `token` (raw JWT) or `json` (with metadata) |
 
-### `mcp-gateway token verify` — 验证 JWT
+### `mcp-gateway token verify` — Decode and verify a JWT
 
 ```bash
 mcp-gateway token verify --public-key jwt-public.pem --token "eyJ..."
-# 或从 stdin 传入：
+# Or pipe from stdin:
 echo "eyJ..." | mcp-gateway token verify --public-key jwt-public.pem
 ```
 
 ---
 
-## 新增华为云服务
+## Adding a new Huawei Cloud service
 
-1. 在 `huaweicloud_mcp/services/<name>/` 下创建 `make_tools(settings) → dict`
-2. 在 `server.py:build_server()` 中添加 `if "<name>" in enabled` 分支
-3. 在 `manifest.yaml` 的 `build_kwargs.enabled` 中追加 `"<name>"`
-4. 重启网关 — 新工具自动出现
+1. Create `huaweicloud_mcp/services/<name>/` with `make_tools(settings) → dict`
+2. Add `if "<name>" in enabled` branch in `server.py:build_server()`
+3. Append `"<name>"` to `build_kwargs.enabled` in `manifest.yaml`
+4. Restart gateway — new tools appear automatically
 
-**无需改 Nginx。无需改网关代码。无需改 Agent 配置。**
+**No Nginx change. No gateway code change. No Agent config change.**
 
 ---
 
-## 生产部署
+## Production deployment
 
 ### systemd
 
-参见 `mcp-gateway/deploy/mcp-gateway.service`：
+See `mcp-gateway/deploy/mcp-gateway.service`:
 
 ```ini
 [Service]
@@ -481,35 +488,37 @@ ExecStart=/opt/mcp-servers/start.sh \
     --manifest /opt/mcp-servers/manifest.yaml
 ```
 
-### Nginx（仅 TLS 终结）
+### Nginx (TLS termination only)
 
-参见 `mcp-gateway/deploy/nginx.conf.example`。关键属性：**一条** `location /` 规则。新增/移除 MCP 服务**不需要**改 Nginx。
+See `mcp-gateway/deploy/nginx.conf.example`. Key property: **one** `location /`
+rule. Adding/removing MCP services **does not** require Nginx changes.
 
 ---
 
-## 选择性启用服务
+## Selective service enable
 
-三层覆盖（优先级从低到高）：
+Three override layers (low → high priority):
 
-| 层级 | 来源 | 示例 |
-|------|------|------|
-| 1 | `manifest.yaml` 的 `enabled` 字段 | `enabled: false` |
-| 2 | `MCP_GATEWAY_ENABLED_SERVICES` 环境变量 | `huaweicloud` |
+| Layer | Source | Example |
+|-------|--------|---------|
+| 1 | `manifest.yaml` `enabled` field | `enabled: false` |
+| 2 | `MCP_GATEWAY_ENABLED_SERVICES` env var | `huaweicloud` |
 | 3 | CLI `--enable` / `--disable` | `./start.sh --enable ecs,pipeline` |
 
-启动日志明确打印已挂载/已跳过的服务及跳过原因。
+Startup logs clearly print mounted/skipped services and skip reasons.
 
 ---
 
-## 按需启用 tools（service 子集精修）
+## Selecting a subset of tools (finer than service)
 
-service 级开关之外，可以用 **fnmatch glob** 在 manifest 里继续裁剪到具体工具，主要场景：
+Beyond service-level toggles you can narrow further to individual tools using
+**fnmatch globs** declared in the manifest. Typical uses:
 
-- **RBAC**：给 readonly token 一个不含写操作的挂载点
-- **缩小 LLM 工具列表**：场景化客户端只暴露相关工具，降低噪音 / token
-- **临时禁用风险工具**：例如生产线先关掉 `*_delete_*`
+- **RBAC**: give readonly tokens a mount that has no mutating tools
+- **Shrink the LLM tool list**: scenario-specific clients expose only what they need (less noise, fewer tokens)
+- **Temporarily disable risky tools**: e.g. drop `*_delete_*` in production
 
-### 在 manifest 中声明
+### Manifest declaration
 
 ```yaml
 services:
@@ -518,25 +527,26 @@ services:
     attr: build_server
     build_kwargs:
       enabled: [ecs, pipeline, cts, cce]
-      include: [ecs_*, cts_*]              # 先按 include 过滤（可选）
-      exclude: ["*_confirm_destructive"]   # 再按 exclude 移除（可选）
+      include: [ecs_*, cts_*]              # optional: keep only matches first
+      exclude: ["*_confirm_destructive"]   # optional: then remove matches
     mount_path: /hwc
 ```
 
-### 环境变量（覆盖默认值，不覆盖显式 kwargs）
+### Env vars (used when kwargs are absent)
 
-| 变量 | 说明 |
-|------|------|
-| `MCP_INCLUDE_TOOLS` | 逗号分隔的 glob，仅保留匹配项 |
-| `MCP_EXCLUDE_TOOLS` | 逗号分隔的 glob，移除匹配项（在 include 之后生效） |
+| Variable | Description |
+|----------|-------------|
+| `MCP_INCLUDE_TOOLS` | Comma-separated globs; keep only matches |
+| `MCP_EXCLUDE_TOOLS` | Comma-separated globs; remove matches (after include) |
 
 ```bash
 MCP_EXCLUDE_TOOLS="*_confirm_destructive,*_set_status,*_delete_*" ./start.sh
 ```
 
-### RBAC 模式：多挂载点 + role 隔离
+### RBAC pattern: multi-mount + role isolation
 
-最低成本实现 readonly / operator 分级 —— 不在协议层做拦截，直接挂两份：
+Cheapest readonly / operator split — no protocol-level interception, just mount
+two FastMCP instances:
 
 ```yaml
 services:
@@ -565,21 +575,26 @@ services:
     required_roles: [operator, admin]
 ```
 
-readonly token 走 `/hwc/ro` 看不到任何写操作；operator token 走 `/hwc` 享有完整工具集。两份 FastMCP 实例各自构建，运行时零开销。
+Readonly tokens hit `/hwc/ro` and never see mutating tools; operator tokens hit
+`/hwc` and get the full toolset. Each mount is an independent FastMCP instance
+built once — zero runtime overhead.
 
-### 优先级
+### Precedence
 
-`build_kwargs.include / exclude` （显式） > `MCP_INCLUDE_TOOLS / MCP_EXCLUDE_TOOLS` （env） > 不过滤。pattern 未匹配到任何工具时只产生 WARNING 日志，不报错。
+`build_kwargs.include / exclude` (explicit) > `MCP_INCLUDE_TOOLS / MCP_EXCLUDE_TOOLS`
+(env) > no filtering. Patterns that match no tool produce a WARNING only — never
+an error.
 
-### 预览：`mcp-gateway config preview`
+### Preview: `mcp-gateway config preview`
 
-改完 manifest 不想拉起 uvicorn 就能看到效果？跑 dry-run：
+Want to see the effect of a manifest change without spinning up uvicorn? Use the
+dry-run:
 
 ```bash
 mcp-gateway config preview --manifest manifest.yaml --show-filtered
 ```
 
-输出示例：
+Sample output:
 
 ```
 Mount /hwc/ro  (huaweicloud-readonly)
@@ -596,123 +611,126 @@ Mount /hwc/ro  (huaweicloud-readonly)
 Summary: 2 mount(s), 34 active tools, 10 filtered
 ```
 
-- 每个被过滤的工具会标注**具体哪条 glob 匹配了它**——拼错 / 写太宽时一眼看到
-- 退出码：构建成功 `0`，任一 service 工厂报错 `1`（可直接挂 CI pre-merge）
-- `--format json` 给下游脚本 / 仪表盘消费
-- 无网络调用、无凭证依赖（自动注入 placeholder env）
+- Every dropped tool is attributed to **the specific glob that matched it** —
+  typos and overly broad patterns become obvious instantly.
+- Exit codes: `0` on success, `1` if any service factory raises (safe to wire
+  into CI as a pre-merge check on manifest changes).
+- `--format json` for downstream tooling / dashboards.
+- No network calls, no credentials required (placeholder env is injected
+  automatically).
 
-支持的选项：
+Same service-level overrides as `serve`:
 
-| 选项 | 说明 |
-|------|------|
-| `--manifest <path>` | manifest 路径，默认与 serve 相同 |
-| `--enable` / `--disable` | service 级覆盖（仅作用于本次预览） |
-| `--show-filtered` | text 模式下逐项列出被过滤的工具及匹配的 pattern |
-| `--format text\|json` | 输出格式，默认 text |
+| Option | Description |
+|--------|-------------|
+| `--manifest <path>` | Manifest path, same default as `serve` |
+| `--enable` / `--disable` | Service-level overrides (preview only) |
+| `--show-filtered` | In text mode, list each dropped tool with the matching pattern |
+| `--format text\|json` | Output format, default text |
 
 ---
 
-## 环境变量
+## Environment variables
 
-### 华为云凭证
+### Huawei Cloud credentials
 
-| 变量 | 必需 | 默认值 | 说明 |
-|------|------|--------|------|
-| `HUAWEICLOUD_ACCESS_KEY_ID` | 是 | | Access Key ID |
-| `HUAWEICLOUD_SECRET_ACCESS_KEY` | 是 | | Secret Access Key |
-| `HUAWEICLOUD_REGION` | 是 | | 区域，如 `af-south-1` |
-| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | 项目 UUID（IaaS 项目，与 CodeArts 项目**不同**） |
-| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | | CodeArts 项目 UUID（与 `HUAWEICLOUD_PROJECT_ID` 不同，**不会回退**） |
-| `CTS_DEFAULT_TIMEZONE` | 否 | `Asia/Shanghai` | CTS 时间解析时区 |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HUAWEICLOUD_ACCESS_KEY_ID` | yes | | Access key ID |
+| `HUAWEICLOUD_SECRET_ACCESS_KEY` | yes | | Secret access key |
+| `HUAWEICLOUD_REGION` | yes | | Region, e.g. `af-south-1` |
+| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | Project UUID (IaaS project — **different** from the CodeArts project) |
+| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | | CodeArts project UUID (distinct from `HUAWEICLOUD_PROJECT_ID`; **no fallback**) |
+| `CTS_DEFAULT_TIMEZONE` | no | `Asia/Shanghai` | CTS time parsing timezone |
 
 ### MCP Server
 
-| 变量 | 必需 | 默认值 | 说明 |
-|------|------|--------|------|
-| `MCP_TRANSPORT` | 否 | `stdio` | `stdio` / `sse` / `streamable-http` |
-| `MCP_HOST` | 否 | `127.0.0.1` | SSE/HTTP 绑定地址 |
-| `MCP_PORT` | 否 | `8000` | SSE/HTTP 绑定端口 |
-| `MCP_ENABLED_SERVICES` | 否 | `ecs,pipeline,cts,cce,lts,ces` | 逗号分隔的服务子集 |
-| `MCP_INCLUDE_TOOLS` | 否 | — | 逗号分隔的 fnmatch glob，仅保留匹配的工具 |
-| `MCP_EXCLUDE_TOOLS` | 否 | — | 逗号分隔的 fnmatch glob，移除匹配的工具（在 include 之后生效） |
-| `HUAWEICLOUD_MCP_LOG_LEVEL` | 否 | `INFO` | 日志级别 |
-| `HUAWEICLOUD_MCP_LOG_FILE` | 否 | stderr | 日志文件路径 |
-| `HUAWEICLOUD_MCP_HTTP_TIMEOUT` | 否 | `30` | SDK HTTP 超时（秒） |
-| `HUAWEICLOUD_MCP_NETWORK_RETRIES` | 否 | `2` | SDK 重试次数 |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MCP_TRANSPORT` | no | `stdio` | `stdio` / `sse` / `streamable-http` |
+| `MCP_HOST` | no | `127.0.0.1` | SSE/HTTP bind host |
+| `MCP_PORT` | no | `8000` | SSE/HTTP bind port |
+| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce,lts,ces` | Comma-separated service subset |
+| `MCP_INCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; keep only matching tools |
+| `MCP_EXCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; remove matching tools (after include) |
+| `HUAWEICLOUD_MCP_LOG_LEVEL` | no | `INFO` | Log level |
+| `HUAWEICLOUD_MCP_LOG_FILE` | no | stderr | Log file path |
+| `HUAWEICLOUD_MCP_HTTP_TIMEOUT` | no | `30` | SDK HTTP timeout (seconds) |
+| `HUAWEICLOUD_MCP_NETWORK_RETRIES` | no | `2` | SDK retry count |
 
-### 网关鉴权
+### Gateway auth
 
-| 变量 | 必需 | 说明 |
-|------|------|------|
-| `MCP_GATEWAY_AUTH_MODE` | ✅ | 网关鉴权：`jwt` / `dev` |
-| `MCP_GATEWAY_HOST` | ✅ | 监听地址（dev 建议 `127.0.0.1`） |
-| `MCP_GATEWAY_PORT` | 可选 | 监听端口，默认 `8080` |
-| `MCP_DEV_LOOPBACK_ONLY` | 可选 | dev 来源限制：`true`（默认）/ `false` |
-| `MCP_GATEWAY_LOG_FORMAT` | 可选 | 日志格式：`text`（默认）/ `json` |
-| `MCP_JWT_PUBLIC_KEY` | jwt 必需 | RS256 公钥（`file:` / `env:` / 内联 PEM） |
-| `MCP_JWT_ISSUER` | 推荐 | JWT 签发者，默认 `mcp-gateway` |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MCP_GATEWAY_AUTH_MODE` | ✅ | Gateway auth: `jwt` / `dev` |
+| `MCP_GATEWAY_HOST` | ✅ | Listen address (`127.0.0.1` for dev) |
+| `MCP_GATEWAY_PORT` | optional | Listen port, default `8080` |
+| `MCP_DEV_LOOPBACK_ONLY` | optional | Dev source restriction: `true` (default) / `false` |
+| `MCP_GATEWAY_LOG_FORMAT` | optional | Log format: `text` (default) / `json` |
+| `MCP_JWT_PUBLIC_KEY` | jwt required | RS256 public key (`file:` / `env:` / inline PEM) |
+| `MCP_JWT_ISSUER` | recommended | JWT issuer, default `mcp-gateway` |
 
-完整列表见 `.env.example`。
-
----
-
-## 共享鉴权库（mcp-auth-common）
-
-| 组件 | 说明 |
-|------|------|
-| `Identity` | pydantic v2 模型：`sub` / `roles` / `tenant` / `iat` / `exp` |
-| `AutoAuth` | 自动检测鉴权策略：有 gateway identity → 使用；否则合成 dev Identity + WARN |
-| `AuthStrategy` | 抽象基类 |
-| `require_role()` | 角色校验，支持 admin ⊃ operator ⊃ readonly 层级 |
-| `set_request_scope()` / `current_scope()` | contextvar 管道，工具函数无需 `ctx` 参数即可获取 scope |
+Full list in `.env.example`.
 
 ---
 
-## 开发
+## Shared auth library (mcp-auth-common)
 
-### 安装
+| Component | Description |
+|-----------|-------------|
+| `Identity` | pydantic v2 model: `sub` / `roles` / `tenant` / `iat` / `exp` |
+| `AutoAuth` | Auto-detect: gateway identity → use; else synthesize dev Identity + WARN |
+| `AuthStrategy` | Abstract base class |
+| `require_role()` | Role check with admin ⊃ operator ⊃ readonly hierarchy |
+| `set_request_scope()` / `current_scope()` | contextvar pipe for scope access without `ctx` param |
+
+---
+
+## Development
+
+### Install
 
 ```bash
-# 在 workspace 根目录
+# From workspace root
 uv sync
 ```
 
-### 运行测试
+### Run tests
 
 ```bash
-# 统一 Server（244 个测试）
+# Unified server (244 tests)
 uv run pytest huaweicloud-mcp-server/tests/ -q
 
-# 网关（120 个测试）
+# Gateway (120 tests)
 uv run pytest mcp-gateway/tests/ -q
 
-# 全部（364 个测试）
+# All (364 tests)
 uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 ```
 
-### 测试结构
+### Test structure
 
-| 类别 | 数量 | 覆盖内容 |
-|------|------|----------|
-| ECS 工具 | 52 | list/get/power/delete/resize/confirm/job |
-| Pipeline 工具 | 48 | list/get/run/update/toggle/confirm |
-| CTS 工具 | 36 | search/detail + time_utils + mask_utils + 7 天窗口 |
-| CCE 工具 | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool 拒绝 |
-| LTS 工具 | 30 | discovery + search + alarm rules/history + histogram + context |
-| CES 工具 | 16 | list metrics + get metric data + alarm rules/histories + resource groups + event data |
-| 配置 / 客户端 | 16 | Settings 校验、客户端工厂、缓存 |
-| 网关鉴权 | 10 | JWT 验签 + RBAC + Identity 注入 + 永久 token |
-| 网关 dev 模式 | 10 | 免 JWT / loopback / open / disabled |
-| 结构化日志 | 9 | JSON 格式 / extra 字段 / 审计事件 |
-| 工具级 RBAC | 14 | 角色层级 + 四服务授权矩阵 |
-| Manifest 覆盖 | 9 | 三层覆盖 + 跳过原因 + 去重 |
-| 工厂模式 | 9 | build_kwargs 解析 + 工厂调用 + 异常 |
-| SSE 前缀回归 | 1 | 无 /hwc/hwc 双前缀 |
-| Token CLI | 18 | keygen + create + verify + 永久 token + 端到端往返 |
-| 组合 lifespan | 4 | 多 FastMCP 挂载 |
+| Category | Count | What it covers |
+|----------|-------|----------------|
+| ECS tools | 52 | list/get/power/delete/resize/confirm/job |
+| Pipeline tools | 48 | list/get/run/update/toggle/confirm |
+| CTS tools | 36 | search/detail + time_utils + mask_utils + 7-day window |
+| CCE tools | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool rejection |
+| LTS tools | 30 | discovery + search + alarm rules/history + histogram + context |
+| CES tools | 16 | list metrics + get metric data + alarm rules/histories + resource groups + event data |
+| Config / client | 16 | Settings validation, client factory, caching |
+| Gateway auth | 10 | JWT verify + RBAC + Identity injection + permanent token |
+| Gateway dev mode | 10 | No JWT / loopback / open / disabled |
+| Structured logging | 9 | JSON format / extra fields / audit events |
+| Tool-level RBAC | 14 | Role hierarchy + 4-service auth matrix |
+| Manifest override | 9 | 3-layer override + skip reasons + dedup |
+| Factory mode | 9 | build_kwargs parsing + factory call + errors |
+| SSE prefix regression | 1 | No double /hwc/hwc in endpoint event |
+| Token CLI | 18 | keygen + create + verify + permanent token + e2e round-trip |
+| Combined lifespan | 4 | Multi-FastMCP mount |
 
 ---
 
-## 许可证
+## License
 
 MIT
