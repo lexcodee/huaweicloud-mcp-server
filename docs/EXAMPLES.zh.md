@@ -2,7 +2,7 @@
 
 本文档汇总在 Agent（Hermes / Claude Code 等）中调用本 MCP Server 各工具的**自然语言提问案例**，可直接复制粘贴使用。所有提问均以一线 SRE / DevOps / 后端工程师视角组织。
 
-> 覆盖 7 个服务、53 个工具：ECS · Pipeline · CTS · CCE · LTS · CES · VPC
+> 覆盖 8 个服务、63 个工具：ECS · Pipeline · CTS · CCE · LTS · CES · VPC · RDS
 
 ---
 
@@ -216,7 +216,48 @@
 
 ---
 
-## 八、跨服务复合场景（Agent 编排）
+## 八、RDS — 关系数据库服务
+
+### 实例与资源查询
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 列出所有实例 | "列出当前项目下所有 RDS 实例" | `rds_describe_instances` |
+| 按引擎过滤 | "列出所有 MySQL RDS 实例" | `rds_describe_instances(datastore_type=MySQL)` |
+| 实例详情 | "查看 RDS rds-xxx 的完整详情，包括节点、磁盘、备份策略" | `rds_describe_instances(instance_id=...)` |
+| 错误日志 | "查看 rds-xxx 过去 1 小时的错误日志" | `rds_get_db_logs(log_type=error)` |
+| 按级别过滤错误日志 | "只看 rds-xxx 过去 2 小时 ERROR 级别的日志" | `rds_get_db_logs(log_type=error, level=error)` |
+| 高频慢查询 | "找出 rds-xxx 过去 1 小时执行最频繁的慢 SQL" | `rds_get_db_logs(log_type=slow, sort_by=count)` |
+| 最慢查询 | "找出 rds-xxx 过去 6 小时最慢的查询" | `rds_get_db_logs(log_type=slow, sort_by=duration)` |
+| 过滤慢查询 | "查看 rds-xxx 上 mydb 库中平均耗时 > 500ms 的慢查询" | `rds_get_db_logs(log_type=slow, database=mydb, min_duration_ms=500)` |
+| 列出数据库 | "RDS rds-xxx 上有哪些数据库？" | `rds_list_db_resources(resource_type=databases)` |
+| 列出账号 | "列出 rds-xxx 的所有数据库账号及权限" | `rds_list_db_resources(resource_type=accounts)` |
+| 备份列表 | "查看 rds-xxx 最近 10 个备份" | `rds_list_backups` |
+| 仅手动备份 | "rds-xxx 有哪些手动备份？" | `rds_list_backups(backup_type=manual)` |
+| 实例指标 | "拉一下 rds-xxx 过去 30 分钟的 CPU、内存、IOPS" | `rds_get_instance_metrics` |
+| 自定义指标 | "查看 rds-xxx 过去 1 小时的活跃连接数，5 分钟平均值" | `rds_get_instance_metrics(metrics=[rds004_connections], period=300)` |
+| 参数组列表 | "列出所有 RDS 参数组" | `rds_describe_parameter_group` |
+| 实例参数 | "查看 rds-xxx 当前应用的参数配置" | `rds_describe_parameter_group(instance_id=...)` |
+| 参数组详情 | "查看参数组 cfg-xxx 的参数列表" | `rds_describe_parameter_group(config_id=...)` |
+| 只读副本 | "rds-xxx 有只读副本吗？复制延迟多少？" | `rds_list_replicas` |
+
+### 安全审计与备份
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 安全审计 | "审计 RDS rds-xxx 的安全风险" | `rds_audit_instance_security` |
+| 变更前备份 | "我要改 rds-xxx 的参数，先创建一个手动备份" | `rds_create_manual_backup` ⚠ |
+| 确认备份 | "确认创建备份，approval_id=..." | `rds_confirm_destructive` |
+
+### 复合场景
+
+- "审计所有 RDS 实例的安全风险，列出有高危发现的实例"
+- "rds-xxx 响应慢——先拉慢查询日志按频率排序，再拉 CPU/IOPS 指标关联分析"
+- "变更 rds-xxx 参数前：检查当前配置、确认最近备份可用、创建手动备份"
+
+---
+
+## 九、跨服务复合场景（Agent 编排）
 
 下面这些场景需要 Agent 自主串联多个工具，体现 MCP Server 的真正价值：
 
@@ -279,9 +320,40 @@
 
 涉及工具：`ecs_get_server` → `vpc_describe_subnets` → `vpc_describe_route_tables` → `vpc_check_port_reachability` → `vpc_query_flow_log_data`
 
+### 7. RDS 慢查询性能分析
+
+> "RDS rds-xxx 性能劣化：
+>  1. 找出高频慢 SQL 模式（按执行次数排序）
+>  2. 拉 CPU 和 IOPS 指标确认资源瓶颈
+>  3. 检查参数组的 buffer pool / query cache 配置
+>  4. 基于 SQL 模式给出索引优化建议"
+
+涉及工具：`rds_get_db_logs(log_type=slow, sort_by=count)` → `rds_get_instance_metrics` → `rds_describe_parameter_group` → AI 分析
+
+### 8. RDS 数据库连接超时诊断
+
+> "应用报 rds-xxx 数据库连接超时：
+>  1. 实例状态是否正常？连接数是否打满？
+>  2. 拉过去 30 分钟的连接数和 CPU 指标
+>  3. 查错误日志是否有 too many connections
+>  4. 检查只读副本延迟
+>  5. 验证安全组是否放通 3306 端口"
+
+涉及工具：`rds_describe_instances` → `rds_get_instance_metrics` → `rds_get_db_logs(log_type=error)` → `rds_list_replicas` → `vpc_check_port_reachability`
+
+### 9. RDS 变更前安全检查
+
+> "我要修改 rds-xxx 的参数：
+>  1. 确认最近备份存在且状态正常
+>  2. 审计当前安全状态
+>  3. 创建手动备份作为安全保障
+>  4. 查看当前参数值以确认变更内容"
+
+涉及工具：`rds_list_backups` → `rds_audit_instance_security` → `rds_create_manual_backup` → `rds_confirm_destructive` → `rds_describe_parameter_group(instance_id=...)`
+
 ---
 
-## 八、两阶段确认（破坏性操作）使用提示
+## 十、两阶段确认（破坏性操作）使用提示
 
 破坏性工具会返回 `{status: "pending_approval", approval_id: "..."}`，Agent 应：
 

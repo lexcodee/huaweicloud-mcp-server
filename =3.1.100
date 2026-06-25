@@ -1,9 +1,0 @@
-Resolved 15 packages in 1.31s
-Downloading huaweicloudsdkvpc (1.1MiB)
- Downloaded huaweicloudsdkvpc
-Prepared 2 packages in 1.34s
-Uninstalled 1 package in 1ms
-Installed 2 packages in 5ms
- - huaweicloudsdkcore==3.1.200
- + huaweicloudsdkcore==3.1.201
- + huaweicloudsdkvpc==3.1.201

@@ -2,7 +2,7 @@
 
 This document collects **natural-language prompt examples** for calling each tool in this MCP Server from an Agent (Hermes / Claude Code / etc.). Copy-paste ready. All prompts are written from the perspective of a frontline SRE / DevOps / backend engineer.
 
-> Covers 7 services, 53 tools: ECS · Pipeline · CTS · CCE · LTS · CES · VPC
+> Covers 8 services, 63 tools: ECS · Pipeline · CTS · CCE · LTS · CES · VPC · RDS
 
 ---
 
@@ -216,7 +216,48 @@ This document collects **natural-language prompt examples** for calling each too
 
 ---
 
-## 8. Cross-Service Composite Scenarios (Agent Orchestration)
+## 8. RDS — Relational Database Service
+
+### Instance & Resource Queries
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| List all instances | "List all RDS instances in the current project" | `rds_describe_instances` |
+| Filter by engine | "Show all MySQL RDS instances" | `rds_describe_instances(datastore_type=MySQL)` |
+| Instance detail | "Get the full detail of RDS instance rds-xxx including nodes, volume, and backup strategy" | `rds_describe_instances(instance_id=...)` |
+| Error logs | "Show error logs for RDS rds-xxx in the past hour" | `rds_get_db_logs(log_type=error)` |
+| Error logs by level | "Show only ERROR-level database logs for rds-xxx in the past 2 hours" | `rds_get_db_logs(log_type=error, level=error)` |
+| Slow queries by count | "Find the most frequent slow queries on rds-xxx in the past hour" | `rds_get_db_logs(log_type=slow, sort_by=count)` |
+| Slow queries by duration | "Find the slowest queries on rds-xxx in the past 6 hours" | `rds_get_db_logs(log_type=slow, sort_by=duration)` |
+| Slow queries filtered | "Show slow queries on rds-xxx in database mydb with avg duration > 500ms" | `rds_get_db_logs(log_type=slow, database=mydb, min_duration_ms=500)` |
+| List databases | "What databases are on RDS rds-xxx?" | `rds_list_db_resources(resource_type=databases)` |
+| List accounts | "List all DB accounts and their privileges on rds-xxx" | `rds_list_db_resources(resource_type=accounts)` |
+| List backups | "Show the last 10 backups for rds-xxx" | `rds_list_backups` |
+| Manual backups only | "What manual backups exist for rds-xxx?" | `rds_list_backups(backup_type=manual)` |
+| Instance metrics | "Pull CPU, memory, and IOPS for rds-xxx over the past 30 minutes" | `rds_get_instance_metrics` |
+| Custom metrics | "Show active connections for rds-xxx over the past hour, 5-min average" | `rds_get_instance_metrics(metrics=[rds004_connections], period=300)` |
+| Parameter groups | "List all RDS parameter groups" | `rds_describe_parameter_group` |
+| Instance parameters | "Show the parameters currently applied to rds-xxx" | `rds_describe_parameter_group(instance_id=...)` |
+| Parameter group detail | "Show the parameters in parameter group cfg-xxx" | `rds_describe_parameter_group(config_id=...)` |
+| List replicas | "Does rds-xxx have any read-only replicas? What's the replication delay?" | `rds_list_replicas` |
+
+### Security Audit & Backups
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| Security audit | "Audit RDS rds-xxx for security risks" | `rds_audit_instance_security` |
+| Pre-change backup | "Create a manual backup of rds-xxx before I change its parameters" | `rds_create_manual_backup` ⚠ |
+| Confirm backup | "Confirm the backup creation, approval_id=..." | `rds_confirm_destructive` |
+
+### Composite Scenarios
+
+- "Audit all RDS instances for security risks and list the ones with high-risk findings"
+- "rds-xxx is slow — pull slow query logs sorted by count, then get CPU/IOPS metrics to correlate"
+- "Before changing parameters on rds-xxx: check current config, verify recent backups exist, create a manual backup"
+
+---
+
+## 9. Cross-Service Composite Scenarios (Agent Orchestration)
 
 The following scenarios require the Agent to chain multiple tools autonomously — this is where the MCP Server delivers real value:
 
@@ -279,9 +320,40 @@ Tools: `ecs_list_servers` + `cce_query_clusters` + `cce_query_nodes` + `pipeline
 
 Tools: `ecs_get_server` → `vpc_describe_subnets` → `vpc_describe_route_tables` → `vpc_check_port_reachability` → `vpc_query_flow_log_data`
 
+### 7. RDS Slow Query Performance Analysis
+
+> "RDS rds-xxx is experiencing performance degradation:
+>  1. Find the top high-frequency slow SQL patterns (sort by count)
+>  2. Pull CPU and IOPS metrics to confirm resource pressure
+>  3. Check parameter group for buffer pool / query cache config
+>  4. Suggest index optimizations based on the SQL patterns"
+
+Tools: `rds_get_db_logs(log_type=slow, sort_by=count)` → `rds_get_instance_metrics` → `rds_describe_parameter_group` → AI analysis
+
+### 8. RDS Database Connection Timeout Diagnosis
+
+> "Application reports database connection timeouts on rds-xxx:
+>  1. Is the instance status normal? Are connections maxed out?
+>  2. Pull connections and CPU metrics for the past 30 minutes
+>  3. Check error logs for 'too many connections'
+>  4. Check read-only replica delay if applicable
+>  5. Verify security group allows port 3306"
+
+Tools: `rds_describe_instances` → `rds_get_instance_metrics` → `rds_get_db_logs(log_type=error)` → `rds_list_replicas` → `vpc_check_port_reachability`
+
+### 9. RDS Pre-Change Safety Check
+
+> "I'm about to modify parameters on rds-xxx:
+>  1. Verify recent backups exist and are completed
+>  2. Audit current security status
+>  3. Create a manual backup as a safety net
+>  4. Show current parameter values so I know what I'm changing"
+
+Tools: `rds_list_backups` → `rds_audit_instance_security` → `rds_create_manual_backup` → `rds_confirm_destructive` → `rds_describe_parameter_group(instance_id=...)`
+
 ---
 
-## 9. Two-Phase Confirmation (Destructive Operations) Usage Guide
+## 10. Two-Phase Confirmation (Destructive Operations) Usage Guide
 
 Destructive tools return `{status: "pending_approval", approval_id: "..."}`. The Agent should:
 

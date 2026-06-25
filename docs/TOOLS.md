@@ -1,4 +1,4 @@
-# MCP Tools (53 total)
+# MCP Tools (63 total)
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 
@@ -112,3 +112,25 @@
 > Common VPC flow log record fields: version, project_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start, end, action, log_status
 
 > Common namespaces: `SYS.ECS` (cloud servers), `SYS.RDS` (relational DB), `SYS.DCS` (Redis cache), `SYS.ELB` (load balancer), `SYS.CCE` (container cluster nodes), `SYS.FunctionGraph` (function compute)
+
+## RDS — Relational Database Service management (10 tools)
+
+### Instance & resource queries (read-only)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `rds_describe_instances` | List instances / get single instance detail (dispatch: instance_id=None → list, set → detail with nodes, volume, backup strategy, connection addresses, storage usage) | readonly |
+| `rds_get_db_logs` | Query error logs (log_type='error') or slow query statistics (log_type='slow'). Slow logs return aggregated SQL-pattern data: sql_text, avg_duration_ms, execution_count, lock_time_ms — for AI-driven index optimization. Filters: min_duration_ms, database, sort_by (duration/count) | readonly |
+| `rds_list_db_resources` | List databases (resource_type='databases': name, charset) or DB accounts (resource_type='accounts': name, hosts, database privileges) | readonly |
+| `rds_list_backups` | List auto/manual backups with filters (instance_id, backup_type, status, time range) | readonly |
+| `rds_get_instance_metrics` | Query CES monitoring metrics for an RDS instance (CPU, memory, IOPS, connections, disk). Cross-calls CES v1 SDK with namespace SYS.RDS | readonly |
+| `rds_describe_parameter_group` | List parameter groups / show one group's params / show instance-applied params (dispatch: instance_id → instance config, config_id → group detail, both None → list all) | readonly |
+| `rds_list_replicas` | List read-only replicas of a primary instance + replication delay status | readonly |
+| `rds_audit_instance_security` | Composite security audit: public IP exposure, root % remote login, storage >85%, no backup in 7d, SSL disabled, no replica. Returns risk_items[] with severity + remediation suggestions | readonly |
+
+### Write operations (two-phase confirmation)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `rds_create_manual_backup` | ⚠ Create a manual backup snapshot (two-phase confirm — call rds_confirm_destructive after user approval) | operator |
+| `rds_confirm_destructive` | Execute pending destructive RDS operation (create_manual_backup) | operator |

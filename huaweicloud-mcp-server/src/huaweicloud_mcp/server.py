@@ -35,7 +35,7 @@ VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 SERVER_NAME = "huaweicloud-mcp-server"
 
-ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc")
+ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc", "rds")
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -237,6 +237,33 @@ def build_server(
             "vpc_query_flow_log_data queries actual flow log records from LTS — "
             "use action='reject' to find denied traffic."
         )
+    if "rds" in enabled:
+        instructions_parts.append(
+            "RDS (Relational Database Service): inspect instances, query logs, "
+            "audit security, and create backups. "
+            "rds_describe_instances dispatches list-vs-detail: omit instance_id "
+            "to list instances, set it to get full detail (nodes, volume, backup "
+            "strategy, connection addresses, storage usage). "
+            "rds_get_db_logs queries error logs (log_type='error') or slow query "
+            "statistics (log_type='slow') — slow logs return aggregated SQL-pattern "
+            "data (sql_text, avg_duration_ms, execution_count, lock_time_ms) for "
+            "AI-driven index optimization. Use sort_by='count' for high-frequency "
+            "slow SQL, sort_by='duration' for slowest queries. "
+            "rds_list_db_resources lists databases (resource_type='databases') or "
+            "DB accounts with privileges (resource_type='accounts'). "
+            "rds_list_backups queries auto/manual backups. "
+            "rds_get_instance_metrics queries CES monitoring metrics (CPU, memory, "
+            "IOPS, connections, disk) — cross-correlate with slow logs to find "
+            "performance bottlenecks. "
+            "rds_describe_parameter_group lists parameter groups, shows one group's "
+            "params (config_id), or shows params applied to a specific instance "
+            "(instance_id). "
+            "rds_list_replicas shows read-only replicas and replication delay. "
+            "rds_create_manual_backup is a TWO-PHASE operation — call "
+            "rds_confirm_destructive(approval_id) after user approval. "
+            "rds_audit_instance_security checks for public IP exposure, root remote "
+            "access, storage near-full, missing backups, SSL disabled, and no replica."
+        )
 
     mcp = FastMCP(
         SERVER_NAME,
@@ -274,6 +301,10 @@ def build_server(
     if "vpc" in enabled:
         from .services.vpc.make_tools import make_tools as _vpc_tools
         tools.update(_vpc_tools(settings))
+
+    if "rds" in enabled:
+        from .services.rds.make_tools import make_tools as _rds_tools
+        tools.update(_rds_tools(settings))
 
     # Resolve include/exclude: explicit kwargs win, otherwise fall back to env.
     include_patterns = _normalise_patterns(include)

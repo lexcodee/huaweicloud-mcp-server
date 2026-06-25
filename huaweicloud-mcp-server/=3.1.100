@@ -1,8 +1,26 @@
-Resolved 74 packages in 1.38s
-   Building huaweicloud-mcp-server @ file:///root/huaweicloud-mcp-server/huaweicloud-mcp-server
-      Built huaweicloud-mcp-server @ file:///root/huaweicloud-mcp-server/huaweicloud-mcp-server
-Prepared 2 packages in 376ms
-Uninstalled 1 package in 0.21ms
-Installed 2 packages in 1ms
- ~ huaweicloud-mcp-server==0.1.0 (from file:///root/huaweicloud-mcp-server/huaweicloud-mcp-server)
- + huaweicloudsdkeip==3.1.200
+Collecting huaweicloudsdkvpc
+  Downloading huaweicloudsdkvpc-3.1.201-py3-none-any.whl (1.1 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.1/1.1 MB 1.5 MB/s eta 0:00:00
+Requirement already satisfied: huaweicloudsdkecs in /usr/local/lib/python3.10/dist-packages (3.1.200)
+Requirement already satisfied: huaweicloudsdkcce in /usr/local/lib/python3.10/dist-packages (3.1.200)
+Collecting huaweicloudsdkeip
+  Downloading huaweicloudsdkeip-3.1.201-py3-none-any.whl (435 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 435.2/435.2 KB 12.8 MB/s eta 0:00:00
+Requirement already satisfied: huaweicloudsdklts in /usr/local/lib/python3.10/dist-packages (3.1.200)
+Requirement already satisfied: huaweicloudsdkces in /usr/local/lib/python3.10/dist-packages (3.1.200)
+Requirement already satisfied: huaweicloudsdkcts in /usr/local/lib/python3.10/dist-packages (3.1.200)
+Requirement already satisfied: huaweicloudsdkcodeartspipeline in /usr/local/lib/python3.10/dist-packages (3.1.198)
+Requirement already satisfied: huaweicloudsdkcore>=3.1.201 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkvpc) (3.1.201)
+Requirement already satisfied: requests-toolbelt>=0.10.1 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (1.0.0)
+Requirement already satisfied: simplejson>=3.20.2 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (4.1.1)
+Requirement already satisfied: pymongo==4.15.1 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (4.15.1)
+Requirement already satisfied: defusedxml in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (0.7.1)
+Requirement already satisfied: certifi>=2025.4.26 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (2026.5.20)
+Requirement already satisfied: six in /usr/lib/python3/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (1.16.0)
+Requirement already satisfied: pyasn1>=0.5.0 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (0.6.3)
+Requirement already satisfied: pyyaml>=6.0.1 in /usr/local/lib/python3.10/dist-packages (from huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (6.0.3)
+Requirement already satisfied: dnspython<3.0.0,>=1.16.0 in /usr/local/lib/python3.10/dist-packages (from pymongo==4.15.1->huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (2.8.0)
+Requirement already satisfied: requests<3.0.0,>=2.0.1 in /usr/lib/python3/dist-packages (from requests-toolbelt>=0.10.1->huaweicloudsdkcore>=3.1.201->huaweicloudsdkvpc) (2.25.1)
+Installing collected packages: huaweicloudsdkvpc, huaweicloudsdkeip
+Successfully installed huaweicloudsdkeip-3.1.201 huaweicloudsdkvpc-3.1.201
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv

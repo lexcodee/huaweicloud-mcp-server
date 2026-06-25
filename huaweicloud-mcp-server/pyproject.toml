@@ -29,6 +29,7 @@ dependencies = [
     "mcp-auth-common",
     "huaweicloudsdkcce>=3.1.200",
     "huaweicloudsdkeip>=3.1.200",
+    "huaweicloudsdkrds>=3.1.100",
 ]
 
 [project.scripts]

@@ -4,8 +4,8 @@
 
 一个 MCP Server 覆盖全部华为云服务。Agent 只需对接 **一个 URL**，即可访问所有已启用的云服务工具。按需启动服务子集，JWT 鉴权保障生产安全，新增云服务无需 Agent 侧任何配置变更。
 
-**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）、CCE（云容器引擎）、LTS（日志服务）、CES（云监控）、VPC（虚拟网络 + 安全组）
-**开发中**：OBS（对象存储）、RDS（关系数据库）…
+**已上线**：ECS（云主机）、CodeArts Pipeline（流水线）、CTS（审计日志）、CCE（云容器引擎）、LTS（日志服务）、CES（云监控）、VPC（虚拟网络 + 安全组）、RDS（关系数据库）
+**开发中**：OBS（对象存储）…
 
 ```
 https://example.com/hwc/sse    ← 全部华为云工具 (ecs_*, pipeline_*, cts_*, obs_*, …)
@@ -49,7 +49,8 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 │           ├── cce/               ← 6 工具 (query clusters/nodes/nodepools, update nodepool, get_job)
 │           ├── lts/               ← 6 工具 (query log resources, search logs, alarm rules/history)
 │           ├── ces/               ← 6 工具 (list metrics, get metric data, alarm rules/history, resource groups, events)
-│           └── vpc/               ← 19 工具 (VPC/子网/对等连接/路由表/EIP/流日志查询, 安全组审计, EIP/路由写操作)
+│           ├── vpc/               ← 19 工具 (VPC/子网/对等连接/路由表/EIP/流日志查询, 安全组审计, EIP/路由写操作)
+│           └── rds/               ← 10 工具 (实例查询, 错误/慢日志, 数据库资源, 备份, 监控指标, 参数组, 只读副本, 安全审计)
 │
 ├── mcp-auth-common/               ← 共享鉴权库 (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
@@ -64,13 +65,13 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 | 模块 | 用途 |
 |------|------|
 | `config.py` | 单一 `Settings` dataclass — AK/SK/region/project_id/timezone。`load_settings()` 从环境变量读取，校验必需项，缺失时快速退出。 |
-| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS、CCE、LTS、CES、VPC、EIP 共用一个工厂，共享 HttpConfig（超时、重试）。 |
+| `client.py` | `get_client(service, settings)` → 缓存的 SDK 客户端。ECS、Pipeline、CTS、CCE、LTS、CES、VPC、EIP、RDS 共用一个工厂，共享 HttpConfig（超时、重试）。 |
 | `errors.py` | `ToolError` 异常 + `wrap_tool` 装饰器：捕获 SDK 错误，标准化为 `{ok: false, error: {...}}` 信封，记录结构化事件。`PendingActions` 实现两阶段提交。 |
 | `logging_setup.py` | `SecretMaskingFilter` 在日志中脱敏 AK/SK。`setup_logging()` 配置仅 stderr（stdio 安全）或文件日志。 |
 
 ---
 
-## MCP 工具一览（53 个）
+## MCP 工具一览（63 个）
 
 | 服务 | 工具数 | 关键工具 | 最低角色 |
 |------|--------|----------|----------|
@@ -81,6 +82,7 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 | LTS | 6 | search_logs/get_context/histogram/alarm | readonly |
 | CES | 6 | list_metrics/get_data/alarm_rules/events | readonly |
 | VPC | 19 | describe vpcs/subnets/peerings/route-tables/eips, SG 审计, EIP/路由写操作, 流日志查询 | readonly → admin |
+| RDS | 10 | describe_instances, get_db_logs (错误+慢日志), list_db_resources, list_backups, get_instance_metrics, describe_parameter_group, list_replicas, create_manual_backup, audit_instance_security | readonly → operator |
 
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 >
@@ -92,15 +94,15 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 
 | 章节 | 内容 |
 |------|------|
-| ECS / Pipeline / CTS / CCE / LTS / CES / VPC | 每个工具对应的提问案例 + 复合场景 |
-| 跨服务复合场景 | 事故复盘、发布前置检查、CCE 容量规划、告警风暴定位、资源审计快照、网络连通性诊断 |
+| ECS / Pipeline / CTS / CCE / LTS / CES / VPC / RDS | 每个工具对应的提问案例 + 复合场景 |
+| 跨服务复合场景 | 事故复盘、发布前置检查、CCE 容量规划、告警风暴定位、资源审计快照、网络连通性诊断、RDS 慢查询分析、RDS 变更前安全检查 |
 | 两阶段确认 | 破坏性操作的对话模板（preview → 确认 → confirm） |
 
 ---
 
 ## 两阶段提交（破坏性操作）
 
-破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线、缩容节点池、解绑 EIP、删除路由）遵循两阶段提交模式，防止误操作：
+破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线、缩容节点池、解绑 EIP、删除路由、创建手动备份）遵循两阶段提交模式，防止误操作：
 
 ```
 阶段 1: 工具调用返回预览 + approval_id（TTL 120 秒）
@@ -117,35 +119,7 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 
 ## 网关架构
 
-```
-                          ┌──────────────────────────────────────┐
-                          │       MCP Gateway (port 8080)        │
-                          │                                      │
-  Agent ──Bearer JWT──▶  │  GatewayAuthMiddleware                │
-                          │    ├─ JWT 验签 (RS256)               │
-                          │    ├─ 路径 RBAC（粗粒度）            │
-                          │    └─ 注入 Identity → scope          │
-                          │                                      │
-                          │  单挂载点：                           │
-                          │    /hwc  → build_server(             │
-                          │             enabled=[ecs,pipeline,cts│
-                          │                    ,cce,lts,ces,vpc]│
-                          │           )                           │
-                          └──────────────────────────────────────┘
-                                    │
-                                    ▼
-                          ┌──────────────────┐
-                          │  统一 FastMCP     │
-                          │  53 个工具：      │
-                          │    ecs_* (8)      │
-                          │    pipeline_* (6) │
-                          │    cts_* (2)      │
-                          │    cce_* (5+1)    │
-                          │    lts_* (6)      │
-                          │    ces_* (6)      │
-                          │    vpc_* (19)     │
-                          └──────────────────┘
-```
+![网关架构](./images/huawei-mcp-gateway_zh.png)
 
 ### 鉴权分层
 
@@ -275,7 +249,7 @@ curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
 统一 Server 可直接通过 stdio 运行，无需网关或 JWT：
 
 ```bash
-# 全部服务（53 个工具）
+# 全部服务（63 个工具）
 huaweicloud-mcp-server
 
 # 仅启用子集
@@ -329,7 +303,7 @@ mcp_servers:
 ```bash
 hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 53
+#   ✓ Tools discovered: 63
 ```
 
 ### Claude Code

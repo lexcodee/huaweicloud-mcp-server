@@ -128,6 +128,16 @@ def _ensure_registry() -> None:
         "project_id_in_creds": True,
     }
 
+    # RDS — Relational Database Service (v3). Project-scoped.
+    from huaweicloudsdkrds.v3.rds_client import RdsClient
+    from huaweicloudsdkrds.v3.region.rds_region import RdsRegion
+
+    _SERVICE_REGISTRY["rds"] = {
+        "client_cls": RdsClient,
+        "region_cls": RdsRegion,
+        "project_id_in_creds": True,
+    }
+
 
 def _build_http_config(settings: Settings) -> HttpConfig:
     cfg = HttpConfig.get_default_config()

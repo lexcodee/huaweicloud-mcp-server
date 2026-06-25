@@ -124,9 +124,11 @@ def make_event_tools(settings: Settings) -> dict:
             }
 
         # ---- DETAIL mode -------------------------------------------------
+        # CES v1 ListEventDetail API requires event_type; default to EVENT.SYS.
+        detail_event_type = params.event_type or "EVENT.SYS"
         req = ListEventDetailRequest(
             event_name=params.event_name,
-            event_type=params.event_type,
+            event_type=detail_event_type,
             sub_event_type=params.sub_event_type,
             event_source=params.event_source,
             event_level=params.event_level,

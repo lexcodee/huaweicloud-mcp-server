@@ -1,4 +1,4 @@
-# MCP 工具一览（53 个）
+# MCP 工具一览（63 个）
 
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 
@@ -112,3 +112,25 @@
 > VPC 流日志记录字段：version, project_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start, end, action, log_status
 
 > 常用 namespace 速查：`SYS.ECS`（云服务器）、`SYS.RDS`（关系数据库）、`SYS.DCS`（Redis 缓存）、`SYS.ELB`（负载均衡）、`SYS.CCE`（容器集群节点）、`SYS.FunctionGraph`（函数工作流）
+
+## RDS — 关系数据库服务管理（10 个）
+
+### 实例与资源查询（只读）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `rds_describe_instances` | 列出实例 / 查看单个实例详情（dispatch: instance_id=None → 列表, 设置 → 详情含节点、磁盘、备份策略、连接地址、存储用量） | readonly |
+| `rds_get_db_logs` | 查询错误日志（log_type='error'）或慢查询统计（log_type='slow'）。慢日志返回按 SQL 模式聚合的数据：sql_text, avg_duration_ms, execution_count, lock_time_ms — 供 AI 分析索引优化。过滤：min_duration_ms, database, sort_by (duration/count) | readonly |
+| `rds_list_db_resources` | 列出数据库（resource_type='databases': 名称, 字符集）或数据库账号（resource_type='accounts': 名称, 主机, 库权限） | readonly |
+| `rds_list_backups` | 列出自动/手动备份，支持按实例、类型、状态、时间范围过滤 | readonly |
+| `rds_get_instance_metrics` | 查询 RDS 实例的 CES 监控指标（CPU、内存、IOPS、连接数、磁盘）。跨调用 CES v1 SDK，namespace=SYS.RDS | readonly |
+| `rds_describe_parameter_group` | 列出参数组 / 查看参数组详情 / 查看实例已应用参数（dispatch: instance_id → 实例配置, config_id → 参数组详情, 均不设 → 列出全部） | readonly |
+| `rds_list_replicas` | 列出主实例的只读副本及复制延迟状态 | readonly |
+| `rds_audit_instance_security` | 复合安全审计：公网 IP 暴露、root % 远程登录、存储 >85%、7 天无备份、SSL 未开启、无只读副本。返回 risk_items[] 含严重级别和修复建议 | readonly |
+
+### 写操作（两阶段确认）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `rds_create_manual_backup` | ⚠ 创建手动备份快照（两阶段确认 — 用户批准后调用 rds_confirm_destructive） | operator |
+| `rds_confirm_destructive` | 确认执行待定的 RDS 破坏性操作（创建手动备份） | operator |

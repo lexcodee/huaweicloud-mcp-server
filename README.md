@@ -7,8 +7,8 @@ access every enabled cloud service tool. Enable only the services you need,
 secure production with JWT auth, and add new cloud services with **zero
 Agent-side config change**.
 
-**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine), LTS (log tank service), CES (cloud eye service), VPC (virtual network + security groups)
-**Coming soon**: OBS (object storage), RDS (relational DB)…
+**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine), LTS (log tank service), CES (cloud eye service), VPC (virtual network + security groups), RDS (relational database)
+**Coming soon**: OBS (object storage)…
 
 ```
 https://example.com/hwc/sse    ← All Huawei Cloud tools (ecs_*, pipeline_*, cts_*, obs_*, …)
@@ -52,7 +52,8 @@ huaweicloud-mcp-server/          # ← workspace root
 │           ├── cce/               ← 6 tools (query clusters/nodes/nodepools, update nodepool, get_job)
 │           ├── lts/               ← 6 tools (query log resources, search logs, alarm rules/history)
 │           ├── ces/               ← 6 tools (list metrics, get metric data, alarm rules/history, resource groups, events)
-│           └── vpc/               ← 19 tools (VPC/subnet/peering/route-table/EIP/flow-log query, SG audit, EIP/route write ops)
+│           ├── vpc/               ← 19 tools (VPC/subnet/peering/route-table/EIP/flow-log query, SG audit, EIP/route write ops)
+│           └── rds/               ← 10 tools (instance query, error/slow logs, DB resources, backups, metrics, parameter groups, replicas, security audit)
 │
 ├── mcp-auth-common/               ← Shared auth (Identity / AutoAuth / require_role)
 │   └── src/mcp_auth_common/
@@ -67,13 +68,13 @@ huaweicloud-mcp-server/          # ← workspace root
 | Module | Purpose |
 |--------|---------|
 | `config.py` | Single `Settings` dataclass — AK/SK/region/project_id/timezone. `load_settings()` reads from env, validates required vars, exits fast on missing. |
-| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE, LTS, CES, VPC, EIP clients with shared HttpConfig (timeout, retries). |
+| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE, LTS, CES, VPC, EIP, RDS clients with shared HttpConfig (timeout, retries). |
 | `errors.py` | `ToolError` exception + `wrap_tool` decorator that catches SDK errors, normalizes them to `{ok: false, error: {...}}` envelopes, and logs structured events. `PendingActions` implements the two-phase commit for destructive ops. |
 | `logging_setup.py` | `SecretMaskingFilter` redacts AK/SK in log output. `setup_logging()` configures stderr-only (stdio-safe) or file logging. |
 
 ---
 
-## MCP tools (53 total)
+## MCP tools (63 total)
 
 | Service | Tools | Key tools | Min role |
 |---------|-------|-----------|----------|
@@ -84,6 +85,7 @@ huaweicloud-mcp-server/          # ← workspace root
 | LTS | 6 | search_logs/get_context/histogram/alarm | readonly |
 | CES | 6 | list_metrics/get_data/alarm_rules/events | readonly |
 | VPC | 19 | describe vpcs/subnets/peerings/route-tables/eips, SG audit, EIP/route write, flow-log query | readonly → admin |
+| RDS | 10 | describe_instances, get_db_logs (error+slow), list_db_resources, list_backups, get_instance_metrics, describe_parameter_group, list_replicas, create_manual_backup, audit_instance_security | readonly → operator |
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 >
@@ -95,8 +97,8 @@ Natural-language query examples per service, cross-service orchestration scenari
 
 | Section | Content |
 |---------|---------|
-| ECS / Pipeline / CTS / CCE / LTS / CES / VPC | Per-tool query examples + composite scenarios |
-| Cross-service scenarios | Incident post-mortem, pre-deploy checks, CCE capacity planning, alarm storm triage, resource audit snapshot, network connectivity diagnosis |
+| ECS / Pipeline / CTS / CCE / LTS / CES / VPC / RDS | Per-tool query examples + composite scenarios |
+| Cross-service scenarios | Incident post-mortem, pre-deploy checks, CCE capacity planning, alarm storm triage, resource audit snapshot, network connectivity diagnosis, RDS slow-query analysis, RDS pre-change safety check |
 | Two-phase commit | Dialog template for destructive ops (preview → confirm → confirm_destructive) |
 
 ---
@@ -104,7 +106,7 @@ Natural-language query examples per service, cross-service orchestration scenari
 ## Two-phase commit (destructive operations)
 
 Destructive tools (stop, reboot, delete, resize, disable pipeline, update pipeline,
-scale-down node pool, disassociate EIP, delete route)
+scale-down node pool, disassociate EIP, delete route, create manual backup)
 follow a two-phase commit pattern to prevent accidental execution:
 
 ```
@@ -122,35 +124,7 @@ If the approval ID expires, re-issue the original call to get a fresh one.
 
 ## Gateway architecture
 
-```
-                          ┌──────────────────────────────────────┐
-                          │       MCP Gateway (port 8080)        │
-                          │                                      │
-  Agent ──Bearer JWT──▶  │  GatewayAuthMiddleware                │
-                          │    ├─ JWT verify (RS256)             │
-                          │    ├─ Path RBAC (coarse)             │
-                          │    └─ Inject identity → scope        │
-                          │                                      │
-                          │  Single mount:                       │
-                          │    /hwc  → build_server(             │
-                          │             enabled=[ecs,pipeline,cts│
-                          │                    ,cce,lts,ces,vpc]│
-                          │           )                           │
-                          └──────────────────────────────────────┘
-                                    │
-                                    ▼
-                          ┌──────────────────┐
-                          │  Unified FastMCP  │
-                          │  53 tools:        │
-                          │    ecs_* (8)      │
-                          │    pipeline_* (6) │
-                          │    cts_* (2)      │
-                          │    cce_* (5+1)    │
-                          │    lts_* (6)      │
-                          │    ces_* (6)      │
-                          │    vpc_* (19)     │
-                          └──────────────────┘
-```
+![Gateway architecture](./images/huawei-mcp-gateway_en.png)
 
 ### Auth layers
 
@@ -280,7 +254,7 @@ curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
 The unified server can run directly via stdio — no gateway or JWT needed:
 
 ```bash
-# All services (53 tools)
+# All services (63 tools)
 huaweicloud-mcp-server
 
 # Subset only
@@ -334,7 +308,7 @@ Verify:
 ```bash
 hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 53
+#   ✓ Tools discovered: 63
 ```
 
 ### Claude Code
@@ -674,7 +648,7 @@ Same service-level overrides as `serve`:
 | `MCP_TRANSPORT` | no | `stdio` | `stdio` / `sse` / `streamable-http` |
 | `MCP_HOST` | no | `127.0.0.1` | SSE/HTTP bind host |
 | `MCP_PORT` | no | `8000` | SSE/HTTP bind port |
-| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce,lts,ces,vpc` | Comma-separated service subset |
+| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce,lts,ces,vpc,rds` | Comma-separated service subset |
 | `MCP_INCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; keep only matching tools |
 | `MCP_EXCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; remove matching tools (after include) |
 | `HUAWEICLOUD_MCP_LOG_LEVEL` | no | `INFO` | Log level |
@@ -722,13 +696,13 @@ uv sync
 ### Run tests
 
 ```bash
-# Unified server (308 tests)
+# Unified server (332 tests)
 uv run pytest huaweicloud-mcp-server/tests/ -q
 
 # Gateway (120 tests)
 uv run pytest mcp-gateway/tests/ -q
 
-# All (428 tests)
+# All (452 tests)
 uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 ```
 
@@ -743,6 +717,7 @@ uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
 | LTS tools | 30 | discovery + search + alarm rules/history + histogram + context |
 | CES tools | 16 | list metrics + get metric data + alarm rules/histories + resource groups + event data |
 | VPC tools | 33 | SG query/audit + network describe + EIP associate/disassociate + route add/delete + flow-log query + confirm |
+| RDS tools | 24 | describe_instances + get_db_logs (error+slow) + list_db_resources + list_backups + get_instance_metrics + describe_parameter_group + list_replicas + create_manual_backup (two-phase) + audit_instance_security |
 | Config / client | 16 | Settings validation, client factory, caching |
 | Gateway auth | 10 | JWT verify + RBAC + Identity injection + permanent token |
 | Gateway dev mode | 10 | No JWT / loopback / open / disabled |
