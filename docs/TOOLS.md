@@ -1,4 +1,4 @@
-# MCP Tools (34 total)
+# MCP Tools (53 total)
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 
@@ -67,5 +67,48 @@
 | `ces_list_alarm_histories` | Query alarm history records (incident post-mortem) | readonly |
 | `ces_query_resource_groups` | List resource groups / get group detail with resources (dispatch: group_id=None → list, set → detail) | readonly |
 | `ces_list_event_data` | List event monitoring data / get event detail (dispatch: event_name=None → list, set → detail) | readonly |
+
+## VPC — Virtual network + security group management (19 tools)
+
+### Network resources (read-only)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `vpc_describe_vpcs` | List VPCs / get single VPC detail (dispatch: vpc_id=None → list, set → detail) | readonly |
+| `vpc_describe_subnets` | List subnets / get single subnet detail with available IP count (dispatch: subnet_id=None → list, set → detail) | readonly |
+| `vpc_describe_vpc_peerings` | List VPC peering connections / get single peering detail (dispatch: peering_id=None → list, set → detail) | readonly |
+| `vpc_describe_route_tables` | List route tables / get single route table detail with route entries (dispatch: route_table_id=None → list, set → detail) | readonly |
+| `vpc_describe_eips` | List elastic public IPs / get single EIP detail (dispatch: eip_id=None → list, set → detail) | readonly |
+| `vpc_list_flow_logs` | List VPC flow log configs / get single flow log detail (dispatch: flow_log_id=None → list, set → detail) | readonly |
+
+### Security group tools
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `vpc_query_security_groups` | List security groups / get single SG detail with rules (dispatch: security_group_id=None → list, set → detail) | readonly |
+| `vpc_audit_security_group` | Audit SG for high-risk rules (SSH/ICMP open to 0.0.0.0/0, sensitive ports) | readonly |
+| `vpc_check_port_reachability` | Check if a specific port is reachable on a SG (ingress/egress) | readonly |
+| `vpc_list_sg_associated_instances` | List ECS instances associated with a security group (cross-calls ECS SDK) | readonly |
+| `vpc_create_security_group` | Create a new security group | operator |
+| `vpc_add_security_group_rule` | Add a rule to an existing security group | operator |
+| `vpc_remove_security_group_rule` | ⚠ Remove a rule from a security group (two-phase confirm) | admin |
+
+### Write operations
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `vpc_associate_eip` | Bind an EIP to an ECS NIC / NAT / ELB port | operator |
+| `vpc_disassociate_eip` | ⚠ Unbind an EIP from its port (two-phase confirm) | admin |
+| `vpc_add_route` | Add a custom route entry to a route table | operator |
+| `vpc_delete_route` | ⚠ Delete a route entry from a route table (two-phase confirm) | admin |
+| `vpc_confirm_destructive` | Execute pending destructive op (disassociate EIP / delete route / remove SG rule) | — |
+
+### Flow log data query
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `vpc_query_flow_log_data` | Query actual VPC flow log records from LTS (5-tuple + action accept/reject). Looks up flow log config via VPC SDK, then searches LTS. Filters: src_ip, dst_ip, dst_port, action | readonly |
+
+> Common VPC flow log record fields: version, project_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start, end, action, log_status
 
 > Common namespaces: `SYS.ECS` (cloud servers), `SYS.RDS` (relational DB), `SYS.DCS` (Redis cache), `SYS.ELB` (load balancer), `SYS.CCE` (container cluster nodes), `SYS.FunctionGraph` (function compute)

@@ -107,6 +107,27 @@ def _ensure_registry() -> None:
         "project_id_in_creds": True,
     }
 
+    # VPC — Virtual Private Cloud (vpcs, subnets, route tables, peerings,
+    # flow logs, security groups, rules). Project-scoped.
+    from huaweicloudsdkvpc.v2.vpc_client import VpcClient
+    from huaweicloudsdkvpc.v2.region.vpc_region import VpcRegion
+
+    _SERVICE_REGISTRY["vpc"] = {
+        "client_cls": VpcClient,
+        "region_cls": VpcRegion,
+        "project_id_in_creds": True,
+    }
+
+    # EIP — Elastic Public IP (v2). Project-scoped.
+    from huaweicloudsdkeip.v2.eip_client import EipClient
+    from huaweicloudsdkeip.v2.region.eip_region import EipRegion
+
+    _SERVICE_REGISTRY["eip"] = {
+        "client_cls": EipClient,
+        "region_cls": EipRegion,
+        "project_id_in_creds": True,
+    }
+
 
 def _build_http_config(settings: Settings) -> HttpConfig:
     cfg = HttpConfig.get_default_config()

@@ -2,7 +2,7 @@
 
 本文档汇总在 Agent（Hermes / Claude Code 等）中调用本 MCP Server 各工具的**自然语言提问案例**，可直接复制粘贴使用。所有提问均以一线 SRE / DevOps / 后端工程师视角组织。
 
-> 覆盖 6 个服务、34 个工具：ECS · Pipeline · CTS · CCE · LTS · CES
+> 覆盖 7 个服务、53 个工具：ECS · Pipeline · CTS · CCE · LTS · CES · VPC
 
 ---
 
@@ -155,7 +155,68 @@
 
 ---
 
-## 七、跨服务复合场景（Agent 编排）
+## 七、VPC — 虚拟网络 + 安全组
+
+### 网络资源查询
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 列出所有 VPC | "列出当前项目下所有 VPC" | `vpc_describe_vpcs` |
+| VPC 详情 | "查看 VPC vpc-id-xxx 的详情，包括 CIDR 和状态" | `vpc_describe_vpcs(vpc_id=...)` |
+| 列出子网 | "VPC vpc-id-xxx 下有哪些子网？" | `vpc_describe_subnets` |
+| 子网 IP 耗尽 | "哪些子网可用 IP 不足了？" | `vpc_describe_subnets` |
+| 子网详情 | "查看子网 subnet-id-xxx 的可用区、可用 IP 数" | `vpc_describe_subnets(subnet_id=...)` |
+| 列出对等连接 | "查看所有 VPC 对等连接及其状态" | `vpc_describe_vpc_peerings` |
+| 对等连接详情 | "对等连接 peer-id-xxx 是否已激活？" | `vpc_describe_vpc_peerings(peering_id=...)` |
+| 列出路由表 | "列出所有路由表及关联子网" | `vpc_describe_route_tables` |
+| 路由表详情 | "查看路由表 rt-id-xxx 的路由条目" | `vpc_describe_route_tables(route_table_id=...)` |
+| 列出 EIP | "列出所有弹性公网 IP 及绑定状态" | `vpc_describe_eips` |
+| EIP 详情 | "EIP eip-id-xxx 绑定在哪个实例上？" | `vpc_describe_eips(eip_id=...)` |
+| 列出流日志 | "有哪些 VPC 流日志配置？" | `vpc_list_flow_logs` |
+| 流日志详情 | "查看流日志 fl-id-xxx 的详情，包括 LTS 日志组/日志流" | `vpc_list_flow_logs(flow_log_id=...)` |
+
+### 安全组查询
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 列出安全组 | "列出所有安全组" | `vpc_query_security_groups` |
+| 安全组详情含规则 | "查看安全组 sg-id-xxx 的所有规则" | `vpc_query_security_groups(security_group_id=...)` |
+| 安全组审计 | "审计安全组 sg-id-xxx 是否有高风险规则（SSH 对 0.0.0.0/0 开放）" | `vpc_audit_security_group` |
+| 端口可达性 | "sg-id-xxx 上 443 端口从 10.0.0.0/8 是否可达？" | `vpc_check_port_reachability` |
+| 关联实例 | "安全组 sg-id-xxx 关联了哪些 ECS 实例？" | `vpc_list_sg_associated_instances` |
+| 创建安全组 | "在 VPC vpc-id-xxx 下创建名为 'web-sg' 的安全组" | `vpc_create_security_group` |
+| 添加规则 | "给 sg-id-xxx 添加入方向规则，允许 TCP 443 从 10.0.0.0/8" | `vpc_add_security_group_rule` |
+| 删除规则 | "从 sg-id-xxx 删除规则 rule-id-xxx" | `vpc_remove_security_group_rule` ⚠ |
+
+### 写操作（含两阶段确认）
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 绑定 EIP | "把 EIP eip-id-xxx 绑定到 ECS 端口 port-id-yyy" | `vpc_associate_eip` |
+| 解绑 EIP | "把 EIP eip-id-xxx 从端口解绑" | `vpc_disassociate_eip` ⚠ |
+| 添加路由 | "给路由表 rt-id-xxx 添加路由：目的 10.1.0.0/16 下一跳对等连接 peer-id-xxx" | `vpc_add_route` |
+| 删除路由 | "从路由表 rt-id-xxx 删除到 10.1.0.0/16 的路由" | `vpc_delete_route` ⚠ |
+| 确认执行 | "确认解绑 EIP，approval_id=abc-123" | `vpc_confirm_destructive` |
+
+### 流日志数据查询
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 最近流日志 | "查看流日志 fl-id-xxx 最近 1 小时的记录" | `vpc_query_flow_log_data` |
+| 被拒绝的流量 | "流日志 fl-id-xxx 最近 30 分钟有哪些被拒绝的流量？" | `vpc_query_flow_log_data(action=reject)` |
+| 按源 IP 过滤 | "查看流日志 fl-id-xxx 中来自 10.0.1.5 的流量" | `vpc_query_flow_log_data(src_ip=10.0.1.5)` |
+| 按目的过滤 | "查看到 10.0.2.100 端口 443 的流量" | `vpc_query_flow_log_data(dst_ip=10.0.2.100,dst_port=443)` |
+
+### 复合场景
+
+- "哪些子网可用 IP 不到 10 个？列出它们的 VPC 和可用区"
+- "对等连接 peer-id-xxx 是否激活？如果是，列出经过它的路由表"
+- "EIP eip-id-xxx 绑定在哪个实例上？给我看那个实例的安全组并审计风险"
+- "流日志 fl-id-xxx 显示 10.0.1.5 到端口 3306 的流量被拒绝——检查目的端安全组是否允许该端口"
+
+---
+
+## 八、跨服务复合场景（Agent 编排）
 
 下面这些场景需要 Agent 自主串联多个工具，体现 MCP Server 的真正价值：
 
@@ -206,6 +267,17 @@
 >  - 当前 firing 告警数（LTS + CES）"
 
 涉及工具：`ecs_list_servers` + `cce_query_clusters` + `cce_query_nodes` + `pipeline_list` + `lts_list_alarm_history` + `ces_query_alarm_rules`
+
+### 6. 网络连通性诊断
+
+> "ECS i-xxx 访问不到 10.0.2.100:443，帮我排查：
+>  1. i-xxx 在哪个 VPC 和子网？
+>  2. 它的路由表里有没有到 10.0.2.0/24 的路由？
+>  3. 安全组是否允许出方向到 10.0.2.100:443？
+>  4. 目的端安全组是否允许入方向 443 端口？
+>  5. 查流日志看 i-xxx 到 10.0.2.100 有没有被拒绝"
+
+涉及工具：`ecs_get_server` → `vpc_describe_subnets` → `vpc_describe_route_tables` → `vpc_check_port_reachability` → `vpc_query_flow_log_data`
 
 ---
 

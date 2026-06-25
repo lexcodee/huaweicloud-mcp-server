@@ -1,4 +1,4 @@
-# MCP 工具一览（34 个）
+# MCP 工具一览（53 个）
 
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 
@@ -67,5 +67,48 @@
 | `ces_list_alarm_histories` | 查询告警历史记录（复盘事故时间线） | readonly |
 | `ces_query_resource_groups` | 列出资源分组 / 查看分组详情含资源列表（dispatch: group_id=None → 列表, 设置 → 详情） | readonly |
 | `ces_list_event_data` | 查询事件监控数据 / 查看事件详情（dispatch: event_name=None → 列表, 设置 → 详情） | readonly |
+
+## VPC — 虚拟网络 + 安全组管理（19 个）
+
+### 网络资源（只读）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `vpc_describe_vpcs` | 列出 VPC / 查看单个 VPC 详情（dispatch: vpc_id=None → 列表, 设置 → 详情） | readonly |
+| `vpc_describe_subnets` | 列出子网 / 查看单个子网详情含可用 IP 数（dispatch: subnet_id=None → 列表, 设置 → 详情） | readonly |
+| `vpc_describe_vpc_peerings` | 列出 VPC 对等连接 / 查看单个对等连接详情（dispatch: peering_id=None → 列表, 设置 → 详情） | readonly |
+| `vpc_describe_route_tables` | 列出路由表 / 查看单个路由表详情含路由条目（dispatch: route_table_id=None → 列表, 设置 → 详情） | readonly |
+| `vpc_describe_eips` | 列出弹性公网 IP / 查看单个 EIP 详情（dispatch: eip_id=None → 列表, 设置 → 详情） | readonly |
+| `vpc_list_flow_logs` | 列出 VPC 流日志配置 / 查看单个流日志详情（dispatch: flow_log_id=None → 列表, 设置 → 详情） | readonly |
+
+### 安全组工具
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `vpc_query_security_groups` | 列出安全组 / 查看单个安全组详情含规则（dispatch: security_group_id=None → 列表, 设置 → 详情） | readonly |
+| `vpc_audit_security_group` | 审计安全组高风险规则（SSH/ICMP 对 0.0.0.0/0 开放、敏感端口） | readonly |
+| `vpc_check_port_reachability` | 检查指定端口在安全组上是否可达（入方向/出方向） | readonly |
+| `vpc_list_sg_associated_instances` | 列出安全组关联的 ECS 实例（跨调用 ECS SDK） | readonly |
+| `vpc_create_security_group` | 创建安全组 | operator |
+| `vpc_add_security_group_rule` | 添加安全组规则 | operator |
+| `vpc_remove_security_group_rule` | ⚠ 删除安全组规则（两阶段确认） | admin |
+
+### 写操作
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `vpc_associate_eip` | 将 EIP 绑定到 ECS 网卡 / NAT / ELB 端口 | operator |
+| `vpc_disassociate_eip` | ⚠ 解绑 EIP（两阶段确认） | admin |
+| `vpc_add_route` | 添加自定义路由条目 | operator |
+| `vpc_delete_route` | ⚠ 删除路由条目（两阶段确认） | admin |
+| `vpc_confirm_destructive` | 确认执行待定的破坏性操作（解绑 EIP / 删除路由 / 删除安全组规则） | — |
+
+### 流日志数据查询
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `vpc_query_flow_log_data` | 查询 VPC 流日志实际记录（来自 LTS，五元组 + 动作 accept/reject）。先通过 VPC SDK 查流日志配置获取 LTS group/topic，再搜索 LTS。过滤：src_ip, dst_ip, dst_port, action | readonly |
+
+> VPC 流日志记录字段：version, project_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start, end, action, log_status
 
 > 常用 namespace 速查：`SYS.ECS`（云服务器）、`SYS.RDS`（关系数据库）、`SYS.DCS`（Redis 缓存）、`SYS.ELB`（负载均衡）、`SYS.CCE`（容器集群节点）、`SYS.FunctionGraph`（函数工作流）

@@ -35,7 +35,7 @@ VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 SERVER_NAME = "huaweicloud-mcp-server"
 
-ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces")
+ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc")
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -213,6 +213,30 @@ def build_server(
             "list events, set event_name to get detail. "
             "Read-only — no destructive ops exposed."
         )
+    if "vpc" in enabled:
+        instructions_parts.append(
+            "VPC (Virtual Private Cloud): manage security groups, VPCs, subnets, "
+            "EIPs, route tables, VPC peerings, and flow logs. "
+            "vpc_query_security_groups dispatches list-vs-detail: omit "
+            "security_group_id to list groups, set it to get one group's full "
+            "rule list. vpc_add_security_group_rule opens a port; "
+            "vpc_remove_security_group_rule is DESTRUCTIVE (two-phase commit — "
+            "call vpc_confirm_destructive(approval_id) after user approval). "
+            "vpc_check_port_reachability tests whether a protocol/port is allowed. "
+            "vpc_audit_security_group flags high-risk rules (0.0.0.0/0 on SSH/RDP/etc). "
+            "vpc_list_sg_associated_instances finds ECS servers using a SG. "
+            "vpc_create_security_group creates a new SG, optionally cloning all "
+            "rules from an existing one (pass source_security_group_id). "
+            "vpc_describe_vpcs / vpc_describe_subnets / vpc_describe_vpc_peerings / "
+            "vpc_describe_route_tables / vpc_describe_eips / vpc_list_flow_logs all "
+            "dispatch list-vs-detail: omit the id param to list, set it to get detail. "
+            "vpc_associate_eip binds an EIP to a port (ECS NIC / NAT / ELB). "
+            "vpc_disassociate_eip is DESTRUCTIVE (two-phase, requires confirm=True). "
+            "vpc_add_route adds a route entry to a route table. "
+            "vpc_delete_route is DESTRUCTIVE (two-phase commit). "
+            "vpc_query_flow_log_data queries actual flow log records from LTS — "
+            "use action='reject' to find denied traffic."
+        )
 
     mcp = FastMCP(
         SERVER_NAME,
@@ -246,6 +270,10 @@ def build_server(
     if "ces" in enabled:
         from .services.ces.make_tools import make_tools as _ces_tools
         tools.update(_ces_tools(settings))
+
+    if "vpc" in enabled:
+        from .services.vpc.make_tools import make_tools as _vpc_tools
+        tools.update(_vpc_tools(settings))
 
     # Resolve include/exclude: explicit kwargs win, otherwise fall back to env.
     include_patterns = _normalise_patterns(include)

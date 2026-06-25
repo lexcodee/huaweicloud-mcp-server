@@ -1,0 +1,8 @@
+Resolved 74 packages in 1.38s
+   Building huaweicloud-mcp-server @ file:///root/huaweicloud-mcp-server/huaweicloud-mcp-server
+      Built huaweicloud-mcp-server @ file:///root/huaweicloud-mcp-server/huaweicloud-mcp-server
+Prepared 2 packages in 376ms
+Uninstalled 1 package in 0.21ms
+Installed 2 packages in 1ms
+ ~ huaweicloud-mcp-server==0.1.0 (from file:///root/huaweicloud-mcp-server/huaweicloud-mcp-server)
+ + huaweicloudsdkeip==3.1.200

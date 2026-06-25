@@ -207,6 +207,50 @@ def mock_lts_client(monkeypatch):
     return fake
 
 
+@pytest.fixture
+def mock_vpc_client(monkeypatch):
+    """Replace get_client in VPC tool modules with a single MagicMock."""
+    fake = MagicMock(name="VpcClient")
+    for mod in (
+        "huaweicloud_mcp.services.vpc.tools.query",
+        "huaweicloud_mcp.services.vpc.tools.manage",
+        "huaweicloud_mcp.services.vpc.tools.network",
+        "huaweicloud_mcp.services.vpc.tools.route",
+        "huaweicloud_mcp.services.vpc.tools.flow_log",
+    ):
+        monkeypatch.setattr(f"{mod}.get_client", lambda service, settings, _f=fake: _f)
+    return fake
+
+
+@pytest.fixture
+def mock_eip_client(monkeypatch):
+    """Replace get_client('eip', ...) in EIP tool module with a MagicMock."""
+    fake = MagicMock(name="EipClient")
+    monkeypatch.setattr(
+        "huaweicloud_mcp.services.vpc.tools.eip.get_client",
+        lambda service, settings, _f=fake: _f,
+    )
+    return fake
+
+
+@pytest.fixture
+def mock_lts_client_for_vpc(monkeypatch):
+    """Replace get_client in VPC flow_log tool with a dual mock.
+
+    Returns a dict {"vpc": vpc_fake, "lts": lts_fake} so tests can set
+    return values on the correct client. The flow_log module calls
+    get_client("vpc", ...) and get_client("lts", ...).
+    """
+    vpc_fake = MagicMock(name="VpcClient")
+    lts_fake = MagicMock(name="LtsClient")
+    _clients = {"vpc": vpc_fake, "lts": lts_fake}
+    monkeypatch.setattr(
+        "huaweicloud_mcp.services.vpc.tools.flow_log.get_client",
+        lambda service, settings, _c=_clients: _c[service],
+    )
+    return _clients
+
+
 # --------------------------------------------------------------------------- #
 # Backward-compat aliases — old test files use `mock_client` and `settings`
 # for whichever service they test. These are overridden per-test-directory

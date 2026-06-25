@@ -2,7 +2,7 @@
 
 This document collects **natural-language prompt examples** for calling each tool in this MCP Server from an Agent (Hermes / Claude Code / etc.). Copy-paste ready. All prompts are written from the perspective of a frontline SRE / DevOps / backend engineer.
 
-> Covers 6 services, 34 tools: ECS · Pipeline · CTS · CCE · LTS · CES
+> Covers 7 services, 53 tools: ECS · Pipeline · CTS · CCE · LTS · CES · VPC
 
 ---
 
@@ -155,7 +155,68 @@ This document collects **natural-language prompt examples** for calling each too
 
 ---
 
-## 7. Cross-Service Composite Scenarios (Agent Orchestration)
+## 7. VPC — Virtual Network + Security Groups
+
+### Network Resource Queries
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| List all VPCs | "List all VPCs in the current project" | `vpc_describe_vpcs` |
+| VPC detail | "Get the full detail of VPC vpc-id-xxx including CIDR and status" | `vpc_describe_vpcs(vpc_id=...)` |
+| List subnets | "What subnets are in VPC vpc-id-xxx?" | `vpc_describe_subnets` |
+| Subnet IP exhaustion | "Which subnets are running low on available IPs?" | `vpc_describe_subnets` |
+| Subnet detail | "Get the detail of subnet subnet-id-xxx including AZ and available IP count" | `vpc_describe_subnets(subnet_id=...)` |
+| List VPC peerings | "Show all VPC peering connections and their status" | `vpc_describe_vpc_peerings` |
+| Peering detail | "Is peering connection peer-id-xxx active?" | `vpc_describe_vpc_peerings(peering_id=...)` |
+| List route tables | "List all route tables and their associated subnets" | `vpc_describe_route_tables` |
+| Route table detail | "Show the route entries in route table rt-id-xxx" | `vpc_describe_route_tables(route_table_id=...)` |
+| List EIPs | "List all elastic public IPs and their binding status" | `vpc_describe_eips` |
+| EIP detail | "What instance is EIP eip-id-xxx bound to?" | `vpc_describe_eips(eip_id=...)` |
+| List flow logs | "What VPC flow log configurations exist?" | `vpc_list_flow_logs` |
+| Flow log detail | "Get the detail of flow log fl-id-xxx including LTS group/topic" | `vpc_list_flow_logs(flow_log_id=...)` |
+
+### Security Group Queries
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| List SGs | "List all security groups" | `vpc_query_security_groups` |
+| SG detail with rules | "Show all rules in security group sg-id-xxx" | `vpc_query_security_groups(security_group_id=...)` |
+| SG audit | "Audit security group sg-id-xxx for high-risk rules (SSH open to 0.0.0.0/0)" | `vpc_audit_security_group` |
+| Port reachability | "Is port 443 reachable on sg-id-xxx from 10.0.0.0/8?" | `vpc_check_port_reachability` |
+| SG associated instances | "Which ECS instances are using security group sg-id-xxx?" | `vpc_list_sg_associated_instances` |
+| Create SG | "Create a security group named 'web-sg' in VPC vpc-id-xxx" | `vpc_create_security_group` |
+| Add SG rule | "Add an ingress rule to sg-id-xxx allowing TCP 443 from 10.0.0.0/8" | `vpc_add_security_group_rule` |
+| Remove SG rule | "Remove rule rule-id-xxx from sg-id-xxx" | `vpc_remove_security_group_rule` ⚠ |
+
+### Write Operations (two-phase confirmation)
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| Bind EIP | "Bind EIP eip-id-xxx to ECS port port-id-yyy" | `vpc_associate_eip` |
+| Unbind EIP | "Unbind EIP eip-id-xxx from its port" | `vpc_disassociate_eip` ⚠ |
+| Add route | "Add a route to rt-id-xxx: destination 10.1.0.0/16 via peering peer-id-xxx" | `vpc_add_route` |
+| Delete route | "Delete route to 10.1.0.0/16 from rt-id-xxx" | `vpc_delete_route` ⚠ |
+| Confirm execution | "Confirm the EIP unbind, approval_id=abc-123" | `vpc_confirm_destructive` |
+
+### Flow Log Data Query
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| Recent flow logs | "Show flow log records for fl-id-xxx in the past hour" | `vpc_query_flow_log_data` |
+| Rejected traffic | "What traffic was rejected in flow log fl-id-xxx in the past 30 minutes?" | `vpc_query_flow_log_data(action=reject)` |
+| Filter by source | "Show flow logs from 10.0.1.5 in fl-id-xxx" | `vpc_query_flow_log_data(src_ip=10.0.1.5)` |
+| Filter by destination | "Show traffic to 10.0.2.100 port 443 in fl-id-xxx" | `vpc_query_flow_log_data(dst_ip=10.0.2.100,dst_port=443)` |
+
+### Composite Scenarios
+
+- "Which subnets have less than 10 available IPs? List them with their VPC and AZ"
+- "Is VPC peering peer-id-xxx active? If so, show the route tables that route through it"
+- "EIP eip-id-xxx is bound to which instance? Show me that instance's security groups and audit them for risk"
+- "Flow log fl-id-xxx shows rejected traffic from 10.0.1.5 to port 3306 — check if the destination's security group allows that port"
+
+---
+
+## 8. Cross-Service Composite Scenarios (Agent Orchestration)
 
 The following scenarios require the Agent to chain multiple tools autonomously — this is where the MCP Server delivers real value:
 
@@ -207,9 +268,20 @@ Tools: `lts_list_alarm_history` + `ces_list_alarm_histories` → `lts_get_log_co
 
 Tools: `ecs_list_servers` + `cce_query_clusters` + `cce_query_nodes` + `pipeline_list` + `lts_list_alarm_history` + `ces_query_alarm_rules`
 
+### 6. Network Connectivity Diagnosis
+
+> "ECS i-xxx cannot reach 10.0.2.100:443. Help me diagnose:
+>  1. Which VPC and subnet is i-xxx in?
+>  2. Is there a route to 10.0.2.0/24 in its route table?
+>  3. Does its security group allow egress to 10.0.2.100:443?
+>  4. Does the destination's security group allow ingress on port 443?
+>  5. Check flow logs for rejected traffic from i-xxx to 10.0.2.100"
+
+Tools: `ecs_get_server` → `vpc_describe_subnets` → `vpc_describe_route_tables` → `vpc_check_port_reachability` → `vpc_query_flow_log_data`
+
 ---
 
-## 8. Two-Phase Confirmation (Destructive Operations) Usage Guide
+## 9. Two-Phase Confirmation (Destructive Operations) Usage Guide
 
 Destructive tools return `{status: "pending_approval", approval_id: "..."}`. The Agent should:
 
