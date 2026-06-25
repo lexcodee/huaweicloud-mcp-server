@@ -29,6 +29,7 @@ https://example.com/healthz    ← 网关探活（免鉴权）
 ```
 huaweicloud-mcp-server/          # ← workspace 根目录
 ├── start.sh                       ← 启动脚本（加载 .env + 启动网关）
+├── start.ps1                      ← Windows 等价脚本（PowerShell）
 ├── .env                           ← 统一环境变量（AK/SK + JWT + 配置）
 ├── .env.example                   ← 全量模板
 ├── manifest.yaml                  ← 服务拓扑（单挂载 /hwc）
@@ -221,7 +222,11 @@ MCP_GATEWAY_HOST=127.0.0.1
 自动加载 `.env`，默认 `127.0.0.1:8080`：
 
 ```bash
+# Linux / macOS
 ./start.sh
+
+# Windows (PowerShell)
+powershell -File start.ps1
 ```
 
 **方式 B — CLI 命令**
@@ -484,6 +489,20 @@ ExecStart=/opt/mcp-servers/start.sh \
 ### Nginx（仅 TLS 终结）
 
 参见 `mcp-gateway/deploy/nginx.conf.example`。关键属性：**一条** `location /` 规则。新增/移除 MCP 服务**不需要**改 Nginx。
+
+### Windows
+
+Python 代码本身跨平台。与 Linux/macOS 的差异：
+
+| 方面 | Linux/macOS | Windows |
+|------|-------------|---------|
+| 启动脚本 | `./start.sh` | `powershell -File start.ps1` |
+| 独立服务器 | `scripts/run-with-env.sh` | `powershell -File scripts/run-with-env.ps1` |
+| venv 入口 | `.venv/bin/huaweicloud-mcp-server` | `.venv/Scripts/huaweicloud-mcp-server.exe` |
+| JWT 公钥路径 | `file:/etc/mcp-gateway/jwt-public.pem` | `file:C:/mcp-gateway/jwt-public.pem` |
+| 日志文件路径 | `/var/log/ecs-mcp-server.log` | `C:/Logs/ecs-mcp-server.log` |
+
+> **Windows 防火墙**：绑定 `0.0.0.0` 可能触发防火墙提示或被静默阻止。本地开发建议使用 `--host 127.0.0.1` 或在 `.env` 中设置 `MCP_GATEWAY_HOST=127.0.0.1`。
 
 ---
 

@@ -277,7 +277,8 @@ def _load_public_key(spec: str | None, *, _depth: int = 0) -> str | None:
     Chaining: when an ``env:`` spec resolves to a value that itself
     starts with ``file:`` or ``env:``, that value is resolved again
     (up to 3 levels deep). This lets operators set
-    ``MCP_JWT_PUBLIC_KEY=file:/etc/mcp-gateway/jwt-public.pem`` in
+    ``MCP_JWT_PUBLIC_KEY=file:/etc/mcp-gateway/jwt-public.pem`` (Linux/macOS)
+    or ``MCP_JWT_PUBLIC_KEY=file:C:/mcp-gateway/jwt-public.pem`` (Windows) in
     their environment instead of inlining the PEM content.
     """
     if not spec:

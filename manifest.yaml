@@ -22,7 +22,8 @@
 jwt:
   issuer: mcp-gateway
   # Public-key spec. Accepted forms:
-  #   file:/etc/mcp-gateway/jwt-public.pem
+  #   file:/etc/mcp-gateway/jwt-public.pem   (Linux/macOS)
+  #   file:C:/mcp-gateway/jwt-public.pem     (Windows)
   #   env:MCP_JWT_PUBLIC_KEY            (use the env var contents)
   #   <inline PEM body>                 (taken verbatim)
   public_key: env:MCP_JWT_PUBLIC_KEY

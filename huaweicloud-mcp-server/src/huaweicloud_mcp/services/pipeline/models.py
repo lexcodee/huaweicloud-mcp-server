@@ -30,6 +30,34 @@ class RunVariable(BaseModel):
     value: str
 
 
+class RunBuildParams(BaseModel):
+    """Build parameters for pipeline run source override.
+
+    Maps to RunPipelineDTOParamsBuildParams in the SDK.
+    Per the RunPipeline API, build_type is REQUIRED when sources are provided.
+    """
+    build_type: Optional[str] = Field(
+        default=None,
+        description="Trigger type: 'branch' or 'tag'.",
+    )
+    event_type: Optional[str] = Field(
+        default=None,
+        description="Trigger method: Manual / Scheduler / MR / Push / CreateTag / Issue / Note.",
+    )
+    target_branch: Optional[str] = Field(
+        default=None,
+        description="Branch to run on (when build_type='branch').",
+    )
+    tag: Optional[str] = Field(
+        default=None,
+        description="Tag to run on (when build_type='tag').",
+    )
+    commit_id: Optional[str] = Field(
+        default=None,
+        description="Specific commit SHA to run on.",
+    )
+
+
 class RunSourceParams(BaseModel):
     git_type: Optional[str] = None
     default_branch: Optional[str] = Field(
@@ -40,8 +68,13 @@ class RunSourceParams(BaseModel):
     codehub_id: Optional[str] = None
     endpoint_id: Optional[str] = None
     git_url: Optional[str] = None
-    # build_params (target_branch / commit_id / tag) supported as opaque dict
-    build_params: Optional[dict] = None
+    build_params: Optional[RunBuildParams] = Field(
+        default=None,
+        description=(
+            "Build parameters (build_type, event_type, target_branch, tag, commit_id). "
+            "Auto-populated from default_branch if omitted."
+        ),
+    )
 
 
 class RunSource(BaseModel):

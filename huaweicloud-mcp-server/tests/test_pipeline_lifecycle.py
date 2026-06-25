@@ -42,9 +42,45 @@ def test_pipeline_run_with_branch_override(settings, mock_pipeline_client):
     assert result["ok"] is True
     body = mock_pipeline_client.run_pipeline.call_args.args[0].body
     assert body.sources[0].params.default_branch == "release/2.0"
+    # build_params must be auto-populated per RunPipeline API
+    bp = body.sources[0].params.build_params
+    assert bp is not None
+    assert bp.build_type == "branch"
+    assert bp.event_type == "Manual"
+    assert bp.target_branch == "release/2.0"
     assert body.variables[0].name == "ENV"
     assert body.variables[0].value == "staging"
     assert body.description == "kick the tyres"
+
+
+def test_pipeline_run_with_explicit_build_params(settings, mock_pipeline_client):
+    """Explicit build_params should NOT be overwritten by auto-populate."""
+    mock_pipeline_client.run_pipeline.return_value = SimpleNamespace(
+        pipeline_run_id="r-3",
+        to_dict=lambda: {"pipeline_run_id": "r-3"},
+    )
+    tool = make_execution_tools(settings)["pipeline_run"]
+    result = tool(
+        pipeline_id="p1",
+        sources=[{
+            "params": {
+                "default_branch": "main",
+                "build_params": {
+                    "build_type": "tag",
+                    "event_type": "CreateTag",
+                    "tag": "v1.0",
+                },
+            },
+        }],
+    )
+    assert result["ok"] is True
+    body = mock_pipeline_client.run_pipeline.call_args.args[0].body
+    bp = body.sources[0].params.build_params
+    assert bp.build_type == "tag"
+    assert bp.event_type == "CreateTag"
+    assert bp.tag == "v1.0"
+    # target_branch should NOT be auto-populated since we gave explicit build_params
+    assert bp.target_branch is None
 
 
 def test_pipeline_set_status_enabled_calls_unban_endpoint(settings, mock_pipeline_client):

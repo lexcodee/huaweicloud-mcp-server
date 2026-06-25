@@ -23,6 +23,19 @@ log = logging.getLogger("huaweicloud_mcp.services.pipeline.tools.execution")
 
 
 def _build_sources(sources: Optional[List[RunSource]]) -> Optional[list]:
+    """Build SDK source objects, auto-populating build_params when needed.
+
+    Per the RunPipeline API doc, specifying a branch requires BOTH
+    ``default_branch`` AND ``build_params`` with:
+      - build_type  = "branch"
+      - event_type  = "Manual"
+      - target_branch = <the branch to run>
+
+    If the caller sets ``default_branch`` but omits ``build_params``, we
+    auto-populate the three required fields so the branch override actually
+    takes effect.  (Without build_params, the API silently ignores the
+    branch override and falls back to the pipeline's stored default.)
+    """
     if sources is None:
         return None
     out = []
@@ -44,9 +57,23 @@ def _build_sources(sources: Optional[List[RunSource]]) -> Optional[list]:
                 sdk_params.endpoint_id = src.params.endpoint_id
             if src.params.git_url is not None:
                 sdk_params.git_url = src.params.git_url
-            if src.params.build_params is not None:
+
+            # --- build_params ---
+            bp_input = src.params.build_params
+            bp_dict = bp_input.model_dump(exclude_none=True) if bp_input else {}
+            # Auto-populate: if default_branch is set and no build_params were
+            # provided at all, fill them in so the branch override works.
+            # (If the caller gave explicit build_params — e.g. a tag trigger —
+            # we leave them untouched.)
+            if src.params.default_branch and not bp_dict:
+                bp_dict = {
+                    "build_type": "branch",
+                    "event_type": "Manual",
+                    "target_branch": src.params.default_branch,
+                }
+            if bp_dict:
                 bp = RunPipelineDTOParamsBuildParams()
-                for k, v in src.params.build_params.items():
+                for k, v in bp_dict.items():
                     if hasattr(bp, k):
                         setattr(bp, k, v)
                 sdk_params.build_params = bp
@@ -92,9 +119,14 @@ def make_execution_tools(settings: Settings) -> dict:
           project_id    : defaults to CODEARTS_DEFAULT_PROJECT_ID.
           sources       : list of {type, params: {git_type, default_branch,
                           alias, codehub_id, endpoint_id, git_url,
-                          build_params: {target_branch, commit_id, tag}}}.
-                          Use this to override the branch for one run only;
-                          the pipeline's stored default_branch is unchanged.
+                          build_params: {build_type, event_type, target_branch,
+                          commit_id, tag}}}.
+                          To override the branch for one run, set default_branch
+                          and the tool auto-populates build_params with
+                          {build_type:"branch", event_type:"Manual",
+                          target_branch:<default_branch>}.  You can also pass
+                          build_params explicitly for full control (e.g. tag
+                          triggers: {build_type:"tag", tag:"v1.0"}).
           variables     : [{name, value}] custom run variables.
           description   : human-readable description, ≤ 512 chars.
           choose_jobs   : restrict the run to these job ids.

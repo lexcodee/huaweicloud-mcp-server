@@ -32,6 +32,7 @@ https://example.com/healthz    ← Gateway health (no auth)
 ```
 huaweicloud-mcp-server/          # ← workspace root
 ├── start.sh                       ← Start script (loads .env + starts gateway)
+├── start.ps1                      ← Windows equivalent (PowerShell)
 ├── .env                           ← Unified env vars (AK/SK + JWT + config)
 ├── .env.example                   ← Full template
 ├── manifest.yaml                  ← Service topology (single mount /hwc)
@@ -226,7 +227,11 @@ Two options — pick either:
 Auto-loads `.env`, defaults to `127.0.0.1:8080`:
 
 ```bash
+# Linux / macOS
 ./start.sh
+
+# Windows (PowerShell)
+powershell -File start.ps1
 ```
 
 **Option B — CLI command**
@@ -492,6 +497,22 @@ ExecStart=/opt/mcp-servers/start.sh \
 
 See `mcp-gateway/deploy/nginx.conf.example`. Key property: **one** `location /`
 rule. Adding/removing MCP services **does not** require Nginx changes.
+
+### Windows
+
+The Python code is cross-platform. Differences from Linux/macOS:
+
+| Area | Linux/macOS | Windows |
+|------|-------------|---------|
+| Start script | `./start.sh` | `powershell -File start.ps1` |
+| Standalone server | `scripts/run-with-env.sh` | `powershell -File scripts/run-with-env.ps1` |
+| venv entry point | `.venv/bin/huaweicloud-mcp-server` | `.venv/Scripts/huaweicloud-mcp-server.exe` |
+| JWT public key path | `file:/etc/mcp-gateway/jwt-public.pem` | `file:C:/mcp-gateway/jwt-public.pem` |
+| Log file path | `/var/log/ecs-mcp-server.log` | `C:/Logs/ecs-mcp-server.log` |
+
+> **Windows Firewall**: binding to `0.0.0.0` may trigger a firewall prompt or be
+> blocked silently. For local dev, use `--host 127.0.0.1` or set
+> `MCP_GATEWAY_HOST=127.0.0.1` in `.env`.
 
 ---
 

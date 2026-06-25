@@ -41,7 +41,7 @@ class SSEKeepAliveMiddleware:
             return
 
         is_event_stream = False
-        last_send_at = asyncio.get_event_loop().time()
+        last_send_at = asyncio.get_running_loop().time()
         keepalive_task: asyncio.Task | None = None
         send_lock = asyncio.Lock()
 
@@ -49,7 +49,7 @@ class SSEKeepAliveMiddleware:
             try:
                 while True:
                     await asyncio.sleep(self.interval)
-                    idle = asyncio.get_event_loop().time() - last_send_at
+                    idle = asyncio.get_running_loop().time() - last_send_at
                     if idle < self.interval:
                         continue
                     async with send_lock:
@@ -79,7 +79,7 @@ class SSEKeepAliveMiddleware:
                 return
 
             if message["type"] == "http.response.body":
-                last_send_at = asyncio.get_event_loop().time()
+                last_send_at = asyncio.get_running_loop().time()
                 async with send_lock:
                     await send(message)
                 if not message.get("more_body", False) and keepalive_task is not None:
