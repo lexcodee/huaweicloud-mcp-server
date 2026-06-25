@@ -81,11 +81,11 @@ huaweicloud-mcp-server/          # ← workspace 根目录
 
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 >
-> 各工具详细说明（参数、返回值、角色要求）见 [docs/TOOLS.md](docs/TOOLS.zh.md)
+> 各工具详细说明（参数、返回值、角色要求）见 [docs/TOOLS.zh.md](docs/TOOLS.zh.md)
 
 ## Agent 提问案例
 
-各服务的自然语言提问示例、复合场景编排、两阶段确认对话模板见 [example.md](docs/EXAMPLES.zh.md)。
+各服务的自然语言提问示例、复合场景编排、两阶段确认对话模板见 [docs/EXAMPLES.zh.md](docs/EXAMPLES.zh.md)。
 
 | 章节 | 内容 |
 |------|------|

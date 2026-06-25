@@ -84,11 +84,11 @@ huaweicloud-mcp-server/          # ← workspace root
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 >
-> Per-tool details (parameters, return values, role requirements): [docs/TOOLS.en.md](docs/TOOLS.md)
+> Per-tool details (parameters, return values, role requirements): [docs/TOOLS.md](docs/TOOLS.md)
 
 ## Agent query examples
 
-Natural-language query examples per service, cross-service orchestration scenarios, and two-phase commit dialog templates: [example.md](docs/EXAMPLES.md).
+Natural-language query examples per service, cross-service orchestration scenarios, and two-phase commit dialog templates: [docs/EXAMPLES.md](docs/EXAMPLES.md).
 
 | Section | Content |
 |---------|---------|
