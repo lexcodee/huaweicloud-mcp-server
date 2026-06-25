@@ -1,105 +1,191 @@
 # Huawei Cloud MCP Server
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-2025--03--26-green)](https://modelcontextprotocol.io/)
+
 **English** | [中文](README.zh.md)
 
-One MCP Server for all Huawei Cloud services. Agents connect to **one URL** and
-access every enabled cloud service tool. Enable only the services you need,
-secure production with JWT auth, and add new cloud services with **zero
-Agent-side config change**.
+One MCP Server for all Huawei Cloud services. Agents connect to **one URL** and access every enabled cloud service tool. Enable only the services you need, secure production with JWT auth, and add new cloud services with **zero Agent-side config change**.
 
-**Available**: ECS (cloud servers), CodeArts Pipeline (CI/CD), CTS (audit logs), CCE (cloud container engine), LTS (log tank service), CES (cloud eye service), VPC (virtual network + security groups), RDS (relational database)
+**Why unified?** Without this server, each Huawei Cloud service needs its own MCP entry — 8+ servers to configure, update, and maintain. With this server, the Agent configures **one** entry, forever. New services appear as additional tools (`obs_*`, `rds_*`, …) with no Agent-side change.
+
+---
+
+## Supported services
+
+| Service | Description | Tools |
+|---------|-------------|-------|
+| ECS | Cloud servers | 8 |
+| CodeArts Pipeline | CI/CD | 6 |
+| CTS | Audit logs | 2 |
+| CCE | Cloud container engine | 6 |
+| LTS | Log tank service | 6 |
+| CES | Cloud eye (monitoring) | 6 |
+| VPC | Virtual network + security groups | 19 |
+| RDS | Relational database | 10 |
+
 **Coming soon**: OBS (object storage)…
 
-```
-https://example.com/hwc/sse    ← All Huawei Cloud tools (ecs_*, pipeline_*, cts_*, obs_*, …)
-https://example.com/healthz    ← Gateway health (no auth)
-```
+> **63 tools total** — Per-tool details: [docs/TOOLS.md](docs/TOOLS.md)
 
-**Key design**:
+---
+
+## Key features
 
 | Feature | Description |
 |---------|-------------|
 | Single URL | Agent configures one MCP server entry, forever |
-| On-demand enable | Service-level: `MCP_ENABLED_SERVICES=ecs,pipeline` loads only what you need<br/>Tool-level: `MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` glob-filter individual tools |
+| On-demand enable | Service-level: `MCP_ENABLED_SERVICES=ecs,pipeline`<br/>Tool-level: `MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` glob-filter |
 | JWT auth | RS256 verification + role RBAC for production; no auth for local dev |
 | Two-phase commit | Destructive ops (delete/stop/resize) require explicit user approval |
 | Zero-config growth | New cloud services are server-side only, Agent is unaware |
 
 ---
 
-## Project structure
+## Quick start
 
-```
-huaweicloud-mcp-server/          # ← workspace root
-├── start.sh                       ← Start script (loads .env + starts gateway)
-├── start.ps1                      ← Windows equivalent (PowerShell)
-├── .env                           ← Unified env vars (AK/SK + JWT + config)
-├── .env.example                   ← Full template
-├── manifest.yaml                  ← Service topology (single mount /hwc)
-├── pyproject.toml                 ← uv workspace declaration
-│
-├── huaweicloud-mcp-server/        ← Unified Huawei Cloud MCP Server
-│   └── src/huaweicloud_mcp/
-│       ├── server.py              ← build_server(enabled=[...]) → FastMCP
-│       ├── config.py              ← Unified Settings (AK/SK/region/project_id)
-│       ├── client.py              ← get_client(service, settings) — lru_cached
-│       ├── errors.py              ← ToolError, two-phase commit
-│       ├── logging_setup.py       ← SecretMaskingFilter + redacted logging
-│       └── services/
-│           ├── ecs/               ← 8 tools (list/get/power/delete/resize)
-│           ├── pipeline/          ← 6 tools (list/get/run/update/toggle)
-│           ├── cts/               ← 2 tools (search/get audit traces)
-│           ├── cce/               ← 6 tools (query clusters/nodes/nodepools, update nodepool, get_job)
-│           ├── lts/               ← 6 tools (query log resources, search logs, alarm rules/history)
-│           ├── ces/               ← 6 tools (list metrics, get metric data, alarm rules/history, resource groups, events)
-│           ├── vpc/               ← 19 tools (VPC/subnet/peering/route-table/EIP/flow-log query, SG audit, EIP/route write ops)
-│           └── rds/               ← 10 tools (instance query, error/slow logs, DB resources, backups, metrics, parameter groups, replicas, security audit)
-│
-├── mcp-auth-common/               ← Shared auth (Identity / AutoAuth / require_role)
-│   └── src/mcp_auth_common/
-│
-└── mcp-gateway/                   ← ASGI gateway (Starlette Mount + JWT middleware)
-    ├── src/mcp_gateway/
-    └── deploy/                    ← systemd + Nginx config
+### Prerequisites
+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- Huawei Cloud AK/SK
+
+### 1. Install
+
+```bash
+uv sync
 ```
 
-### Shared infrastructure
+### 2. Configure
 
-| Module | Purpose |
-|--------|---------|
-| `config.py` | Single `Settings` dataclass — AK/SK/region/project_id/timezone. `load_settings()` reads from env, validates required vars, exits fast on missing. |
-| `client.py` | `get_client(service, settings)` → cached SDK client. One factory for ECS, Pipeline, CTS, CCE, LTS, CES, VPC, EIP, RDS clients with shared HttpConfig (timeout, retries). |
-| `errors.py` | `ToolError` exception + `wrap_tool` decorator that catches SDK errors, normalizes them to `{ok: false, error: {...}}` envelopes, and logs structured events. `PendingActions` implements the two-phase commit for destructive ops. |
-| `logging_setup.py` | `SecretMaskingFilter` redacts AK/SK in log output. `setup_logging()` configures stderr-only (stdio-safe) or file logging. |
+Edit `.env` in the repo root:
+
+```bash
+HUAWEICLOUD_ACCESS_KEY_ID=your-ak
+HUAWEICLOUD_SECRET_ACCESS_KEY=your-sk
+HUAWEICLOUD_REGION=cn-north-4
+HUAWEICLOUD_PROJECT_ID=your-project-id
+CODEARTS_DEFAULT_PROJECT_ID=your-codearts-project-id
+```
+
+### 3. Connect your Agent (stdio mode)
+
+stdio mode is the simplest — no gateway, no JWT. Configure your Agent (see [Agent Configuration](#agent-configuration)) and you're done.
+
+### 4. Start the gateway (gateway mode, optional)
+
+> Skip this step for stdio mode.
+
+Add to `.env`:
+
+```bash
+MCP_GATEWAY_AUTH_MODE=dev
+MCP_GATEWAY_HOST=127.0.0.1
+```
+
+Start:
+
+```bash
+# Linux / macOS
+./start.sh
+
+# Windows
+powershell -File start.ps1
+
+# Or via CLI
+mcp-gateway serve --manifest manifest.yaml --host 0.0.0.0 --port 8080
+```
+
+Verify:
+
+```bash
+curl http://127.0.0.1:8080/healthz
+# {"status":"ok","mounted":[{"name":"huaweicloud","mount_path":"/hwc"}]}
+```
 
 ---
 
-## MCP tools (63 total)
+## Agent Configuration
 
-| Service | Tools | Key tools | Min role |
-|---------|-------|-----------|----------|
-| ECS | 8 | list/get/power/delete/resize | readonly → admin |
-| Pipeline | 6 | list/get/run/update/toggle | readonly → admin |
-| CTS | 2 | search_traces/get_trace_detail | readonly |
-| CCE | 6 | query clusters/nodes/nodepools, update nodepool | readonly → operator |
-| LTS | 6 | search_logs/get_context/histogram/alarm | readonly |
-| CES | 6 | list_metrics/get_data/alarm_rules/events | readonly |
-| VPC | 19 | describe vpcs/subnets/peerings/route-tables/eips, SG audit, EIP/route write, flow-log query | readonly → admin |
-| RDS | 10 | describe_instances, get_db_logs (error+slow), list_db_resources, list_backups, get_instance_metrics, describe_parameter_group, list_replicas, create_manual_backup, audit_instance_security | readonly → operator |
+Use the templates below. Replace `<RUN_SCRIPT>` with the absolute path to `scripts/run-with-env.sh` (Linux/macOS) or `scripts/run-with-env.ps1` (Windows).
 
-> Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
->
-> Per-tool details (parameters, return values, role requirements): [docs/TOOLS.md](docs/TOOLS.md)
+### stdio (local dev, recommended)
 
-## Agent query examples
+```json
+{
+  "mcpServers": {
+    "huaweicloud": {
+      "command": "<RUN_SCRIPT>",
+      "timeout": 120
+    }
+  }
+}
+```
 
-Natural-language query examples per service, cross-service orchestration scenarios, and two-phase commit dialog templates: [docs/EXAMPLES.md](docs/EXAMPLES.md).
+### SSE via gateway (production)
 
-| Section | Content |
-|---------|---------|
-| ECS / Pipeline / CTS / CCE / LTS / CES / VPC / RDS | Per-tool query examples + composite scenarios |
-| Cross-service scenarios | Incident post-mortem, pre-deploy checks, CCE capacity planning, alarm storm triage, resource audit snapshot, network connectivity diagnosis, RDS slow-query analysis, RDS pre-change safety check |
-| Two-phase commit | Dialog template for destructive ops (preview → confirm → confirm_destructive) |
+```json
+{
+  "mcpServers": {
+    "huaweicloud": {
+      "url": "http://<HOST>:<PORT>/hwc/sse",
+      "transport": "sse",
+      "timeout": 120,
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  }
+}
+```
+
+### Where to put the config
+
+| Agent | Config location | Notes |
+|-------|----------------|-------|
+| **Hermes** | `hermes config set "mcp_servers.huaweicloud.command" <RUN_SCRIPT>` | Do NOT edit config.yaml directly |
+| **Claude Code** | `~/.claude/mcp.json` | Or project-level `.claude/mcp.json` |
+| **Claude Desktop** | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`<br/>Windows: `%APPDATA%\Claude\claude_desktop_config.json` | |
+| **Cursor** | `~/.cursor/mcp.json` | |
+| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | |
+| **Cline** | VS Code Settings → Cline MCP Servers | |
+
+### Verify
+
+```bash
+# Hermes
+hermes mcp test huaweicloud
+#   ✓ Connected (643ms)
+#   ✓ Tools discovered: 63
+```
+
+> **Key point**: Regardless of how many Huawei Cloud services are added, the Agent always configures **one** MCP server entry. New services appear as additional tools without any Agent-side config change.
+
+---
+
+## Gateway architecture
+
+![Gateway architecture](./images/huawei-mcp-gateway_en.png)
+
+Auth is handled at two layers — gateway middleware (JWT verify + path RBAC) and per-tool role checks inside the MCP server. See [docs/DEPLOY.md](docs/DEPLOY.md) for auth modes, Token CLI, and production setup.
+
+---
+
+## stdio mode (local dev, no gateway)
+
+The unified server can run directly via stdio — no gateway or JWT needed:
+
+```bash
+# All services (63 tools)
+huaweicloud-mcp-server
+
+# Subset only
+MCP_ENABLED_SERVICES=ecs,pipeline huaweicloud-mcp-server
+
+# SSE mode
+MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
+```
 
 ---
 
@@ -122,326 +208,37 @@ If the approval ID expires, re-issue the original call to get a fresh one.
 
 ---
 
-## Gateway architecture
+## Configuration
 
-![Gateway architecture](./images/huawei-mcp-gateway_en.png)
+### Core environment variables
 
-### Auth layers
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `HUAWEICLOUD_ACCESS_KEY_ID` | yes | Access key ID |
+| `HUAWEICLOUD_SECRET_ACCESS_KEY` | yes | Secret access key |
+| `HUAWEICLOUD_REGION` | yes | Region, e.g. `af-south-1` |
+| `MCP_ENABLED_SERVICES` | no | Comma-separated service subset (default: all) |
+| `MCP_GATEWAY_AUTH_MODE` | gateway | `jwt` (production) / `dev` (local) |
 
-| Layer | Responsibility | Granularity | Example |
-|-------|---------------|-------------|---------|
-| Gateway middleware | Verify JWT → parse Identity → path RBAC → inject scope | `/hwc/*` | No hwc permission → 403 |
-| MCP Server | Read Identity from scope → per-tool role check | `ecs_delete` vs `ecs_list` | Non-admin calls delete → ToolError |
+Full variable reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) · `.env.example`
 
-### Server-side auth: auto-detect, zero config
+### Service & tool filtering
 
-| Scenario | Behavior | Notes |
-|----------|----------|-------|
-| Behind gateway | `scope["mcp_identity"]` exists → use it | Gateway verified, Identity trusted |
-| Standalone (stdio/SSE) | No gateway identity → synthesize dev Identity + ⚠ WARN | Local dev, auto-allow |
+- **Service-level**: `MCP_ENABLED_SERVICES=ecs,pipeline` or `--enable`/`--disable` CLI flags
+- **Tool-level**: `MCP_INCLUDE_TOOLS` / `MCP_EXCLUDE_TOOLS` fnmatch globs in manifest or env
+- **RBAC multi-mount**: mount separate FastMCP instances per role at different paths
 
-### Gateway auth modes
-
-| Mode | Env var | Behavior | Use case |
-|------|---------|----------|----------|
-| `jwt` | `MCP_GATEWAY_AUTH_MODE=*** (default) | Full JWT verify + path RBAC | Production |
-| `dev` | `MCP_GATEWAY_AUTH_MODE=*** | Skip JWT, synthesize Identity | Non-production |
-
-Dev mode source restriction via `MCP_DEV_LOOPBACK_ONLY`:
-
-| Sub-mode | Env var | Behavior | Use case |
-|----------|---------|----------|----------|
-| loopback-only | `MCP_DEV_LOOPBACK_ONLY=true` (default) | Only loopback callers allowed | Local dev |
-| open | `MCP_DEV_LOOPBACK_ONLY=false` | Any source allowed (CRITICAL log) | CI / isolated test |
+See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for manifest examples, RBAC patterns, and `mcp-gateway config preview`.
 
 ---
 
-## Quick start
+## Production deployment
 
-### Prerequisites
+- **systemd**: see `mcp-gateway/deploy/mcp-gateway.service`
+- **Nginx**: TLS termination only — one `location /` rule, no changes when services are added/removed
+- **JWT tokens**: `mcp-gateway token keygen` → `token create` → `token verify`
 
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
-- Huawei Cloud AK/SK
-
-### 1. Install dependencies
-
-```bash
-uv sync
-```
-
-### 2. Configure environment
-
-Edit `.env` in the repo root:
-
-```bash
-# Huawei Cloud credentials (shared by all services)
-HUAWEICLOUD_ACCESS_KEY_ID=your-ak
-HUAWEICLOUD_SECRET_ACCESS_KEY=your-sk
-HUAWEICLOUD_REGION=cn-north-4
-HUAWEICLOUD_PROJECT_ID=your-project-id
-CODEARTS_DEFAULT_PROJECT_ID=your-codearts-project-id
-```
-
-> **stdio mode is ready at this point**: once env vars are set, skip to [Agent config — stdio (local dev)](#hermes-agent) below. No gateway needed.
-
-### 3. Start the gateway (gateway mode)
-
-> Only needed for gateway mode. Skip for stdio mode.
-
-Add gateway config to `.env`:
-
-```bash
-# Gateway auth mode (dev for local, jwt for production)
-MCP_GATEWAY_AUTH_MODE=dev
-MCP_GATEWAY_HOST=127.0.0.1
-```
-
-Two options — pick either:
-
-**Option A — Start script (recommended)**
-
-Auto-loads `.env`, defaults to `127.0.0.1:8080`:
-
-```bash
-# Linux / macOS
-./start.sh
-
-# Windows (PowerShell)
-powershell -File start.ps1
-```
-
-**Option B — CLI command**
-
-```bash
-mcp-gateway serve --manifest manifest.yaml --host 0.0.0.0 --port 8080 --log-level info
-```
-
-Common options:
-
-| Flag | Env var | Default | Description |
-|------|---------|---------|-------------|
-| `--manifest` | `MCP_GATEWAY_MANIFEST` | `manifest.yaml` | Service topology file |
-| `--enable <svc>` | `MCP_GATEWAY_ENABLED_SERVICES` | — | Enable specific services (overrides manifest + env) |
-| `--disable <svc>` | — | — | Disable specific services |
-| `--host` | `MCP_GATEWAY_HOST` | `0.0.0.0` | Listen address |
-| `--port` | `MCP_GATEWAY_PORT` | `8080` | Listen port |
-| `--log-level` | `MCP_GATEWAY_LOG_LEVEL` | `info` | Log level |
-| `--print-only` | — | — | Build app and print mount plan without starting uvicorn (debug) |
-
-### 4. Verify (gateway mode)
-
-```bash
-curl http://127.0.0.1:8080/healthz
-# {"status":"ok","mounted":[{"name":"huaweicloud","mount_path":"/hwc"}]}
-```
-
-### 5. Issue JWT tokens (production)
-
-```bash
-# Generate key pair
-mcp-gateway token keygen
-
-# Issue token
-mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
-
-# Call gateway with token
-curl -H "Authorization: Bearer *** http://127.0.0.1:8080/hwc/sse
-```
-
-## stdio mode (local dev, no gateway)
-
-The unified server can run directly via stdio — no gateway or JWT needed:
-
-```bash
-# All services (63 tools)
-huaweicloud-mcp-server
-
-# Subset only
-MCP_ENABLED_SERVICES=ecs,pipeline huaweicloud-mcp-server
-
-# SSE mode
-MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
-```
-
----
-
-## Agent configuration
-
-### Hermes Agent
-
-Add to `~/.hermes/config.yaml` (use `hermes config set`, do NOT edit directly):
-
-**stdio (local dev, recommended)**
-
-```bash
-hermes config set "mcp_servers.huaweicloud.command" /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
-hermes config set "mcp_servers.huaweicloud.timeout" 120
-hermes config set "mcp_servers.huaweicloud.connect_timeout" 30
-```
-
-Equivalent YAML (for reference only — do NOT write manually):
-
-```yaml
-mcp_servers:
-  huaweicloud:
-    command: /path/to/huaweicloud-mcp-server/scripts/run-with-env.sh
-    timeout: 120
-    connect_timeout: 30
-```
-
-**SSE via gateway (production)**
-
-```yaml
-mcp_servers:
-  huaweicloud:
-    url: http://127.0.0.1:8080/hwc/sse
-    transport: sse
-    timeout: 120
-    connect_timeout: 30
-    headers:
-      Authorization: Bearer ***
-```
-
-Verify:
-
-```bash
-hermes mcp test huaweicloud
-#   ✓ Connected (643ms)
-#   ✓ Tools discovered: 63
-```
-
-### Claude Code
-
-Add to `~/.claude/mcp.json` (or project-level `.claude/mcp.json`).
-
-**stdio (local dev)**
-
-```json
-{
-  "mcpServers": {
-    "huaweicloud": {
-      "command": "/path/to/huaweicloud-mcp-server/scripts/run-with-env.sh",
-      "timeout": 120
-    }
-  }
-}
-```
-
-**SSE via gateway (production)**
-
-```json
-{
-  "mcpServers": {
-    "huaweicloud": {
-      "url": "http://127.0.0.1:8080/hwc/sse",
-      "transport": "sse",
-      "timeout": 120,
-      "headers": {
-        "Authorization": "Bearer eyJhbG..."
-      }
-    }
-  }
-}
-```
-
-### Claude Desktop / Cursor / Windsurf / Cline
-
-Config file locations:
-
-| Agent | Config file |
-|-------|-------------|
-| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
-| Cursor | `~/.cursor/mcp.json` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
-| Cline | VS Code Settings → Cline MCP Servers |
-
-**stdio (local dev)**
-
-```json
-{
-  "mcpServers": {
-    "huaweicloud": {
-      "command": "/path/to/huaweicloud-mcp-server/scripts/run-with-env.sh"
-    }
-  }
-}
-```
-
-**SSE via gateway (production)**
-
-```json
-{
-  "mcpServers": {
-    "huaweicloud": {
-      "url": "http://127.0.0.1:8080/hwc/sse",
-      "transport": "sse",
-      "headers": {
-        "Authorization": "Bearer eyJhbG..."
-      }
-    }
-  }
-}
-```
-
-> **Key point**: Regardless of how many Huawei Cloud services are added, the
-> Agent always configures **one** MCP server entry. New services appear as
-> additional tools (`obs_*`, `rds_*`, …) without any Agent-side config change.
-
----
-
-## Token CLI
-
-The gateway ships a built-in token management CLI.
-
-### `mcp-gateway token keygen` — Generate RSA key pair
-
-```bash
-mcp-gateway token keygen                              # defaults: jwt-private.pem / jwt-public.pem / 2048 bits
-mcp-gateway token keygen --bits 4096                  # stronger key
-mcp-gateway token keygen --private-key /etc/mcp/jwt-private.pem \
-                          --public-key  /etc/mcp/jwt-public.pem
-```
-
-### `mcp-gateway token create` — Sign a JWT
-
-```bash
-# Minimal — outputs raw JWT string
-mcp-gateway token create --sub alice --roles admin --private-key jwt-private.pem
-
-# Full options
-mcp-gateway token create \
-  --sub ops-bot \
-  --roles operator,readonly \
-  --private-key jwt-private.pem \
-  --issuer mcp-gateway \
-  --audience mcp-api \
-  --tenant proj-abc \
-  --ttl 7200 \
-  --format json
-
-# Permanent token (never expires)
-mcp-gateway token create --sub service-account --roles admin --private-key jwt-private.pem --ttl 0
-```
-
-| Flag | Required | Default | Description |
-|------|----------|---------|-------------|
-| `--sub` | Yes | — | Subject (user or service account id) |
-| `--roles` | Yes | — | Comma-separated role list |
-| `--private-key` | No | `jwt-private.pem` | Path to RSA private key PEM |
-| `--issuer` | No | `mcp-gateway` | JWT `iss` claim |
-| `--audience` | No | — | JWT `aud` claim |
-| `--tenant` | No | — | Tenant / project id |
-| `--ttl` | No | `3600` | Lifetime in seconds; `0` = permanent |
-| `--format` | No | `token` | `token` (raw JWT) or `json` (with metadata) |
-
-### `mcp-gateway token verify` — Decode and verify a JWT
-
-```bash
-mcp-gateway token verify --public-key jwt-public.pem --token "eyJ..."
-# Or pipe from stdin:
-echo "eyJ..." | mcp-gateway token verify --public-key jwt-public.pem
-```
+Full guide: [docs/DEPLOY.md](docs/DEPLOY.md)
 
 ---
 
@@ -456,278 +253,16 @@ echo "eyJ..." | mcp-gateway token verify --public-key jwt-public.pem
 
 ---
 
-## Production deployment
+## Documentation
 
-### systemd
-
-See `mcp-gateway/deploy/mcp-gateway.service`:
-
-```ini
-[Service]
-WorkingDirectory=/opt/mcp-servers
-EnvironmentFile=/etc/mcp-gateway/.env
-ExecStart=/opt/mcp-servers/start.sh \
-    --manifest /opt/mcp-servers/manifest.yaml
-```
-
-### Nginx (TLS termination only)
-
-See `mcp-gateway/deploy/nginx.conf.example`. Key property: **one** `location /`
-rule. Adding/removing MCP services **does not** require Nginx changes.
-
-### Windows
-
-The Python code is cross-platform. Differences from Linux/macOS:
-
-| Area | Linux/macOS | Windows |
-|------|-------------|---------|
-| Start script | `./start.sh` | `powershell -File start.ps1` |
-| Standalone server | `scripts/run-with-env.sh` | `powershell -File scripts/run-with-env.ps1` |
-| venv entry point | `.venv/bin/huaweicloud-mcp-server` | `.venv/Scripts/huaweicloud-mcp-server.exe` |
-| JWT public key path | `file:/etc/mcp-gateway/jwt-public.pem` | `file:C:/mcp-gateway/jwt-public.pem` |
-| Log file path | `/var/log/ecs-mcp-server.log` | `C:/Logs/ecs-mcp-server.log` |
-
-> **Windows Firewall**: binding to `0.0.0.0` may trigger a firewall prompt or be
-> blocked silently. For local dev, use `--host 127.0.0.1` or set
-> `MCP_GATEWAY_HOST=127.0.0.1` in `.env`.
-
----
-
-## Selective service enable
-
-Three override layers (low → high priority):
-
-| Layer | Source | Example |
-|-------|--------|---------|
-| 1 | `manifest.yaml` `enabled` field | `enabled: false` |
-| 2 | `MCP_GATEWAY_ENABLED_SERVICES` env var | `huaweicloud` |
-| 3 | CLI `--enable` / `--disable` | `./start.sh --enable ecs,pipeline` |
-
-Startup logs clearly print mounted/skipped services and skip reasons.
-
----
-
-## Selecting a subset of tools (finer than service)
-
-Beyond service-level toggles you can narrow further to individual tools using
-**fnmatch globs** declared in the manifest. Typical uses:
-
-- **RBAC**: give readonly tokens a mount that has no mutating tools
-- **Shrink the LLM tool list**: scenario-specific clients expose only what they need (less noise, fewer tokens)
-- **Temporarily disable risky tools**: e.g. drop `*_delete_*` in production
-
-### Manifest declaration
-
-```yaml
-services:
-  - name: huaweicloud
-    module: huaweicloud_mcp
-    attr: build_server
-    build_kwargs:
-      enabled: [ecs, pipeline, cts, cce]
-      include: [ecs_*, cts_*]              # optional: keep only matches first
-      exclude: ["*_confirm_destructive"]   # optional: then remove matches
-    mount_path: /hwc
-```
-
-### Env vars (used when kwargs are absent)
-
-| Variable | Description |
-|----------|-------------|
-| `MCP_INCLUDE_TOOLS` | Comma-separated globs; keep only matches |
-| `MCP_EXCLUDE_TOOLS` | Comma-separated globs; remove matches (after include) |
-
-```bash
-MCP_EXCLUDE_TOOLS="*_confirm_destructive,*_set_status,*_delete_*" ./start.sh
-```
-
-### RBAC pattern: multi-mount + role isolation
-
-Cheapest readonly / operator split — no protocol-level interception, just mount
-two FastMCP instances:
-
-```yaml
-services:
-  - name: huaweicloud-readonly
-    module: huaweicloud_mcp
-    attr: build_server
-    build_kwargs:
-      enabled: [ecs, pipeline, cts, cce]
-      exclude:
-        - "*_confirm_destructive"
-        - "*_set_status"
-        - "*_update_*"
-        - "*_delete_*"
-        - "*_resize_*"
-        - "*_power_action"
-        - "pipeline_run"
-    mount_path: /hwc/ro
-    required_roles: [readonly, operator, admin]
-
-  - name: huaweicloud
-    module: huaweicloud_mcp
-    attr: build_server
-    build_kwargs:
-      enabled: [ecs, pipeline, cts, cce]
-    mount_path: /hwc
-    required_roles: [operator, admin]
-```
-
-Readonly tokens hit `/hwc/ro` and never see mutating tools; operator tokens hit
-`/hwc` and get the full toolset. Each mount is an independent FastMCP instance
-built once — zero runtime overhead.
-
-### Precedence
-
-`build_kwargs.include / exclude` (explicit) > `MCP_INCLUDE_TOOLS / MCP_EXCLUDE_TOOLS`
-(env) > no filtering. Patterns that match no tool produce a WARNING only — never
-an error.
-
-### Preview: `mcp-gateway config preview`
-
-Want to see the effect of a manifest change without spinning up uvicorn? Use the
-dry-run:
-
-```bash
-mcp-gateway config preview --manifest manifest.yaml --show-filtered
-```
-
-Sample output:
-
-```
-Mount /hwc/ro  (huaweicloud-readonly)
-  Roles:   readonly, operator, admin
-  Module:  huaweicloud_mcp.build_server  [factory]
-  Exclude: ['*_confirm_destructive', '*_delete_*', ...]
-  Tools:   12 active, 10 filtered
-    ✓ cce_query_clusters
-    ✓ cts_search_traces
-    ...
-    ✗ ecs_delete_server  (excluded by '*_delete_*')
-    ✗ pipeline_run       (excluded by 'pipeline_run')
-
-Summary: 2 mount(s), 34 active tools, 10 filtered
-```
-
-- Every dropped tool is attributed to **the specific glob that matched it** —
-  typos and overly broad patterns become obvious instantly.
-- Exit codes: `0` on success, `1` if any service factory raises (safe to wire
-  into CI as a pre-merge check on manifest changes).
-- `--format json` for downstream tooling / dashboards.
-- No network calls, no credentials required (placeholder env is injected
-  automatically).
-
-Same service-level overrides as `serve`:
-
-| Option | Description |
-|--------|-------------|
-| `--manifest <path>` | Manifest path, same default as `serve` |
-| `--enable` / `--disable` | Service-level overrides (preview only) |
-| `--show-filtered` | In text mode, list each dropped tool with the matching pattern |
-| `--format text\|json` | Output format, default text |
-
----
-
-## Environment variables
-
-### Huawei Cloud credentials
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `HUAWEICLOUD_ACCESS_KEY_ID` | yes | | Access key ID |
-| `HUAWEICLOUD_SECRET_ACCESS_KEY` | yes | | Secret access key |
-| `HUAWEICLOUD_REGION` | yes | | Region, e.g. `af-south-1` |
-| `HUAWEICLOUD_PROJECT_ID` | ECS/CTS | | Project UUID (IaaS project — **different** from the CodeArts project) |
-| `CODEARTS_DEFAULT_PROJECT_ID` | Pipeline | | CodeArts project UUID (distinct from `HUAWEICLOUD_PROJECT_ID`; **no fallback**) |
-| `CTS_DEFAULT_TIMEZONE` | no | `Asia/Shanghai` | CTS time parsing timezone |
-
-### MCP Server
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `MCP_TRANSPORT` | no | `stdio` | `stdio` / `sse` / `streamable-http` |
-| `MCP_HOST` | no | `127.0.0.1` | SSE/HTTP bind host |
-| `MCP_PORT` | no | `8000` | SSE/HTTP bind port |
-| `MCP_ENABLED_SERVICES` | no | `ecs,pipeline,cts,cce,lts,ces,vpc,rds` | Comma-separated service subset |
-| `MCP_INCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; keep only matching tools |
-| `MCP_EXCLUDE_TOOLS` | no | — | Comma-separated fnmatch globs; remove matching tools (after include) |
-| `HUAWEICLOUD_MCP_LOG_LEVEL` | no | `INFO` | Log level |
-| `HUAWEICLOUD_MCP_LOG_FILE` | no | stderr | Log file path |
-| `HUAWEICLOUD_MCP_HTTP_TIMEOUT` | no | `30` | SDK HTTP timeout (seconds) |
-| `HUAWEICLOUD_MCP_NETWORK_RETRIES` | no | `2` | SDK retry count |
-
-### Gateway auth
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MCP_GATEWAY_AUTH_MODE` | ✅ | Gateway auth: `jwt` / `dev` |
-| `MCP_GATEWAY_HOST` | ✅ | Listen address (`127.0.0.1` for dev) |
-| `MCP_GATEWAY_PORT` | optional | Listen port, default `8080` |
-| `MCP_DEV_LOOPBACK_ONLY` | optional | Dev source restriction: `true` (default) / `false` |
-| `MCP_GATEWAY_LOG_FORMAT` | optional | Log format: `text` (default) / `json` |
-| `MCP_JWT_PUBLIC_KEY` | jwt required | RS256 public key (`file:` / `env:` / inline PEM) |
-| `MCP_JWT_ISSUER` | recommended | JWT issuer, default `mcp-gateway` |
-
-Full list in `.env.example`.
-
----
-
-## Shared auth library (mcp-auth-common)
-
-| Component | Description |
-|-----------|-------------|
-| `Identity` | pydantic v2 model: `sub` / `roles` / `tenant` / `iat` / `exp` |
-| `AutoAuth` | Auto-detect: gateway identity → use; else synthesize dev Identity + WARN |
-| `AuthStrategy` | Abstract base class |
-| `require_role()` | Role check with admin ⊃ operator ⊃ readonly hierarchy |
-| `set_request_scope()` / `current_scope()` | contextvar pipe for scope access without `ctx` param |
-
----
-
-## Development
-
-### Install
-
-```bash
-# From workspace root
-uv sync
-```
-
-### Run tests
-
-```bash
-# Unified server (332 tests)
-uv run pytest huaweicloud-mcp-server/tests/ -q
-
-# Gateway (120 tests)
-uv run pytest mcp-gateway/tests/ -q
-
-# All (452 tests)
-uv run pytest huaweicloud-mcp-server/tests/ mcp-gateway/tests/ -q
-```
-
-### Test structure
-
-| Category | Count | What it covers |
-|----------|-------|----------------|
-| ECS tools | 52 | list/get/power/delete/resize/confirm/job |
-| Pipeline tools | 48 | list/get/run/update/toggle/confirm |
-| CTS tools | 36 | search/detail + time_utils + mask_utils + 7-day window |
-| CCE tools | 30 | query clusters/nodes/nodepools + update nodepool + get_job + confirm + DefaultPool rejection |
-| LTS tools | 30 | discovery + search + alarm rules/history + histogram + context |
-| CES tools | 16 | list metrics + get metric data + alarm rules/histories + resource groups + event data |
-| VPC tools | 33 | SG query/audit + network describe + EIP associate/disassociate + route add/delete + flow-log query + confirm |
-| RDS tools | 24 | describe_instances + get_db_logs (error+slow) + list_db_resources + list_backups + get_instance_metrics + describe_parameter_group + list_replicas + create_manual_backup (two-phase) + audit_instance_security |
-| Config / client | 16 | Settings validation, client factory, caching |
-| Gateway auth | 10 | JWT verify + RBAC + Identity injection + permanent token |
-| Gateway dev mode | 10 | No JWT / loopback / open / disabled |
-| Structured logging | 9 | JSON format / extra fields / audit events |
-| Tool-level RBAC | 14 | Role hierarchy + 4-service auth matrix |
-| Manifest override | 9 | 3-layer override + skip reasons + dedup |
-| Factory mode | 9 | build_kwargs parsing + factory call + errors |
-| SSE prefix regression | 1 | No double /hwc/hwc in endpoint event |
-| Token CLI | 18 | keygen + create + verify + permanent token + e2e round-trip |
-| Combined lifespan | 4 | Multi-FastMCP mount |
+| Document | Content |
+|----------|---------|
+| [docs/TOOLS.md](docs/TOOLS.md) | Per-tool parameters, return values, role requirements |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Agent query examples, cross-service scenarios, two-phase commit dialogs |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Service/tool filtering, RBAC multi-mount, env vars, config preview |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Auth layers, Token CLI, systemd, Nginx, Windows |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project structure, shared infrastructure, auth library, test structure |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, running tests, adding services |
 
 ---
 
