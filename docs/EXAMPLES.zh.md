@@ -2,7 +2,7 @@
 
 本文档汇总在 Agent（Hermes / Claude Code 等）中调用本 MCP Server 各工具的**自然语言提问案例**，可直接复制粘贴使用。所有提问均以一线 SRE / DevOps / 后端工程师视角组织。
 
-> 覆盖 8 个服务、63 个工具：ECS · Pipeline · CTS · CCE · LTS · CES · VPC · RDS
+> 覆盖 9 个服务、75 个工具：ECS · Pipeline · CTS · CCE · LTS · CES · VPC · RDS · OBS
 
 ---
 
@@ -257,7 +257,53 @@
 
 ---
 
-## 九、跨服务复合场景（Agent 编排）
+## 九、OBS — 对象存储服务
+
+### 桶与对象查询（只读）
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 列出所有桶 | "列出我账号下所有 OBS 桶" | `obs_describe_buckets` |
+| 桶详情 | "查看桶 my-bucket 的存储类型和版本控制状态" | `obs_describe_buckets(bucket_name=...)` |
+| 列出对象 | "列出桶 my-bucket 中的所有对象" | `obs_list_objects` |
+| 前缀过滤 | "列出桶 my-bucket 中 logs/2024-06/ 前缀下的对象" | `obs_list_objects(prefix=logs/2024-06/)` |
+| 目录结构 | "用 '/' 分隔符展示桶 my-bucket 的目录结构" | `obs_list_objects(delimiter=/)` |
+| 对象元数据 | "查看 my-bucket/config/app.yaml 的大小和类型，不要下载" | `obs_get_object` |
+| 对象内容 | "读取 my-bucket/config/app.yaml 的内容（小文件）" | `obs_get_object(include_content=True)` |
+| 列出版本 | "列出 my-bucket/important.doc 的所有历史版本（已开启版本控制）" | `obs_list_objects(include_versions=True)` |
+| 预签名下载 URL | "为 my-bucket/report.pdf 生成一个 1 小时有效的下载链接" | `obs_generate_presigned_url(method=GET, expires=3600)` |
+| 预签名上传 URL | "为 my-bucket/uploads/file.txt 生成一个 2 小时有效的上传链接" | `obs_generate_presigned_url(method=PUT, expires=7200)` |
+| 桶 ACL | "查看桶 my-bucket 的 ACL 和公开访问状态" | `obs_describe_bucket_policy` |
+| 生命周期规则 | "桶 my-bucket 配了什么生命周期规则？" | `obs_describe_bucket_lifecycle` |
+
+### 安全审计
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 桶安全审计 | "审计桶 my-bucket 的安全风险" | `obs_audit_bucket_security` |
+| 批量审计 | "审计我所有 OBS 桶的公开访问和加密状态" | `obs_audit_bucket_security`（循环） |
+
+### 写操作（含两阶段确认）
+
+| 场景 | 提问案例 | 触发工具 |
+|------|---------|---------|
+| 上传配置 | "把这份 JSON 配置上传到 my-bucket/config/deploy.json" | `obs_upload_object` |
+| 创建桶 | "在 af-south-1 创建一个私有桶 'ci-artifacts'" | `obs_create_bucket` |
+| 删除对象 | "删除 my-bucket/temp/old-report.csv" | `obs_delete_object` ⚠ |
+| 确认删除 | "确认删除对象，approval_id=..." | `obs_confirm_destructive` |
+| 设置桶策略 | "给桶 my-bucket 设置公开读策略" | `obs_set_bucket_policy` ⚠ |
+| 确认策略 | "确认更新桶策略，approval_id=..." | `obs_confirm_destructive` |
+
+### 复合场景
+
+- "审计所有 OBS 桶的安全风险，列出有高危发现的桶"
+- "为 my-bucket/report.pdf 生成预签名下载链接，用 curl 验证可用"
+- "列出 my-bucket/logs/ 前缀下过去 7 天的对象，再查生命周期规则看哪些即将被删除"
+- "从 my-bucket 读取 deploy.json 配置，检查是否引用了 RDS 实例，审计这些实例的安全"
+
+---
+
+## 十、跨服务复合场景（Agent 编排）
 
 下面这些场景需要 Agent 自主串联多个工具，体现 MCP Server 的真正价值：
 
@@ -351,9 +397,19 @@
 
 涉及工具：`rds_list_backups` → `rds_audit_instance_security` → `rds_create_manual_backup` → `rds_confirm_destructive` → `rds_describe_parameter_group(instance_id=...)`
 
+### 10. OBS 桶安全批量扫描
+
+> "审计我所有 OBS 桶：
+>  1. 列出所有桶
+>  2. 逐个检查公开 ACL、未加密、未开启版本控制
+>  3. 标记有公开读 ACL 且包含敏感数据（配置文件、数据库导出）的桶
+>  4. 生成报告并上传到安全桶"
+
+涉及工具：`obs_describe_buckets` → `obs_audit_bucket_security`（循环）→ `obs_list_objects` → `obs_upload_object`
+
 ---
 
-## 十、两阶段确认（破坏性操作）使用提示
+## 十一、两阶段确认（破坏性操作）使用提示
 
 破坏性工具会返回 `{status: "pending_approval", approval_id: "..."}`，Agent 应：
 

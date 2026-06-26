@@ -30,6 +30,7 @@ dependencies = [
     "huaweicloudsdkcce>=3.1.200",
     "huaweicloudsdkeip>=3.1.200",
     "huaweicloudsdkrds>=3.1.100",
+    "huaweicloudsdkobs>=3.1.100",
 ]
 
 [project.scripts]

@@ -24,10 +24,9 @@ One MCP Server for all Huawei Cloud services. Agents connect to **one URL** and 
 | CES | Cloud eye (monitoring) | 6 |
 | VPC | Virtual network + security groups | 19 |
 | RDS | Relational database | 10 |
+| OBS | Object storage | 12 |
 
-**Coming soon**: OBS (object storage)…
-
-> **63 tools total** — Per-tool details: [docs/TOOLS.md](docs/TOOLS.md)
+> **75 tools total** — Per-tool details: [docs/TOOLS.md](docs/TOOLS.md)
 
 ---
 
@@ -157,7 +156,7 @@ Use the templates below. Replace `<RUN_SCRIPT>` with the absolute path to `scrip
 # Hermes
 hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 63
+#   ✓ Tools discovered: 75
 ```
 
 > **Key point**: Regardless of how many Huawei Cloud services are added, the Agent always configures **one** MCP server entry. New services appear as additional tools without any Agent-side config change.
@@ -177,7 +176,7 @@ Auth is handled at two layers — gateway middleware (JWT verify + path RBAC) an
 The unified server can run directly via stdio — no gateway or JWT needed:
 
 ```bash
-# All services (63 tools)
+# All services (75 tools)
 huaweicloud-mcp-server
 
 # Subset only
@@ -192,7 +191,8 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 ## Two-phase commit (destructive operations)
 
 Destructive tools (stop, reboot, delete, resize, disable pipeline, update pipeline,
-scale-down node pool, disassociate EIP, delete route, create manual backup)
+scale-down node pool, disassociate EIP, delete route, create manual backup,
+delete OBS object, set OBS bucket policy)
 follow a two-phase commit pattern to prevent accidental execution:
 
 ```

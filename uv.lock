@@ -480,6 +480,8 @@ dependencies = [
     { name = "huaweicloudsdkecs" },
     { name = "huaweicloudsdkeip" },
     { name = "huaweicloudsdklts" },
+    { name = "huaweicloudsdkobs" },
+    { name = "huaweicloudsdkrds" },
     { name = "huaweicloudsdkvpc" },
     { name = "mcp", extra = ["cli"] },
     { name = "mcp-auth-common" },
@@ -510,6 +512,8 @@ requires-dist = [
     { name = "huaweicloudsdkecs", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkeip", specifier = ">=3.1.200" },
     { name = "huaweicloudsdklts", specifier = ">=3.1.100" },
+    { name = "huaweicloudsdkobs", specifier = ">=3.1.100" },
+    { name = "huaweicloudsdkrds", specifier = ">=3.1.100" },
     { name = "huaweicloudsdkvpc", specifier = ">=3.1.100" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.2.0" },
     { name = "mcp-auth-common", editable = "mcp-auth-common" },
@@ -615,6 +619,28 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/1d/c74b3de93fd79d4b3a59e4a038d0ce36b5b21bb3bafbe3c302d8bc318a9d/huaweicloudsdklts-3.1.200-py3-none-any.whl", hash = "sha256:6c79d7c0404d9398036ec71c0f018d687f55b523492ae7c92a609d448614ed72", size = 582393, upload-time = "2026-06-18T08:51:02.493Z" },
+]
+
+[[package]]
+name = "huaweicloudsdkobs"
+version = "3.1.200"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huaweicloudsdkcore" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/fb/3913c785a4cec8b1feb58fe53c45a0958b277dc87afb597b8865c0e9bb39/huaweicloudsdkobs-3.1.200-py3-none-any.whl", hash = "sha256:fea662f214f01b0cf36b9b5ddc106652332726592a66d5bf4f9a7e29d71afa35", size = 235361, upload-time = "2026-06-18T08:51:16.643Z" },
+]
+
+[[package]]
+name = "huaweicloudsdkrds"
+version = "3.1.200"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huaweicloudsdkcore" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/b6/51bf2b0cd85c6dbfdcae381da74629018ba161d2a99d929644fde972c626/huaweicloudsdkrds-3.1.200-py3-none-any.whl", hash = "sha256:1087610b12bd45b738fd6dc357314a3b55534f8bd957ff3538609246931a61a3", size = 1596089, upload-time = "2026-06-18T08:51:30.395Z" },
 ]
 
 [[package]]

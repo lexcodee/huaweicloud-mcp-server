@@ -138,6 +138,17 @@ def _ensure_registry() -> None:
         "project_id_in_creds": True,
     }
 
+    # OBS — Object Storage Service (v1). Uses ObsCredentials (no project_id).
+    from huaweicloudsdkobs.v1.obs_client import ObsClient
+    from huaweicloudsdkobs.v1.region.obs_region import ObsRegion
+
+    _SERVICE_REGISTRY["obs"] = {
+        "client_cls": ObsClient,
+        "region_cls": ObsRegion,
+        "project_id_in_creds": False,
+        "credential_type": "obs",
+    }
+
 
 def _build_http_config(settings: Settings) -> HttpConfig:
     cfg = HttpConfig.get_default_config()
@@ -176,6 +187,12 @@ def _build_client(service: str, settings: Settings) -> Any:
             ak=settings.access_key_id,
             sk=settings.secret_access_key,
             project_id=settings.project_id,
+        )
+    elif entry.get("credential_type") == "obs":
+        from huaweicloudsdkobs.v1.obs_credentials import ObsCredentials
+        creds = ObsCredentials(
+            ak=settings.access_key_id,
+            sk=settings.secret_access_key,
         )
     else:
         creds = BasicCredentials(

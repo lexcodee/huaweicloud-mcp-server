@@ -24,10 +24,9 @@
 | CES | 云监控 | 6 |
 | VPC | 虚拟网络 + 安全组 | 19 |
 | RDS | 关系数据库 | 10 |
+| OBS | 对象存储 | 12 |
 
-**开发中**：OBS（对象存储）…
-
-> **共 63 个工具** — 各工具详细说明见 [docs/TOOLS.zh.md](docs/TOOLS.zh.md)
+> **共 75 个工具** — 各工具详细说明见 [docs/TOOLS.zh.md](docs/TOOLS.zh.md)
 
 ---
 
@@ -157,7 +156,7 @@ curl http://127.0.0.1:8080/healthz
 # Hermes
 hermes mcp test huaweicloud
 #   ✓ Connected (643ms)
-#   ✓ Tools discovered: 63
+#   ✓ Tools discovered: 75
 ```
 
 > **核心要点**：无论未来新增多少华为云服务，Agent 始终只需配置**一个** MCP Server 条目。新服务以新工具名自动出现，无需 Agent 侧任何配置变更。
@@ -177,7 +176,7 @@ hermes mcp test huaweicloud
 统一 Server 可直接通过 stdio 运行，无需网关或 JWT：
 
 ```bash
-# 全部服务（63 个工具）
+# 全部服务（75 个工具）
 huaweicloud-mcp-server
 
 # 仅启用子集
@@ -191,7 +190,7 @@ MCP_TRANSPORT=sse MCP_PORT=8000 huaweicloud-mcp-server
 
 ## 两阶段提交（破坏性操作）
 
-破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线、缩容节点池、解绑 EIP、删除路由、创建手动备份）遵循两阶段提交模式，防止误操作：
+破坏性工具（关机、重启、删除、变更规格、禁用流水线、修改流水线、缩容节点池、解绑 EIP、删除路由、创建手动备份、删除 OBS 对象、设置 OBS 桶策略）遵循两阶段提交模式，防止误操作：
 
 ```
 阶段 1: 工具调用返回预览 + approval_id（TTL 120 秒）

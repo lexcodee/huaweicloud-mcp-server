@@ -1,4 +1,4 @@
-# MCP Tools (63 total)
+# MCP Tools (75 total)
 
 > Role hierarchy: **admin** ⊃ **operator** ⊃ **readonly**
 
@@ -134,3 +134,32 @@
 |------|-------------|----------|
 | `rds_create_manual_backup` | ⚠ Create a manual backup snapshot (two-phase confirm — call rds_confirm_destructive after user approval) | operator |
 | `rds_confirm_destructive` | Execute pending destructive RDS operation (create_manual_backup) | operator |
+
+## OBS — Object Storage Service management (12 tools)
+
+### Bucket & object queries (read-only)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `obs_describe_buckets` | List all buckets / get single bucket detail (dispatch: bucket_name=None → list with region/storage class/versioning, set → detail with metadata + ACL) | readonly |
+| `obs_list_objects` | List objects in a bucket with prefix/delimiter/pagination. Set include_versions=True to list object history versions (requires versioning enabled) | readonly |
+| `obs_get_object` | Get object metadata via HEAD (default). Set include_content=True to download content (limited to 1 MB, text only — binary objects raise BINARY_CONTENT error) | readonly |
+| `obs_generate_presigned_url` | Generate a time-limited download/upload URL (V2 HMAC-SHA1 signing, virtual-hosted-style). Method=GET for download, PUT for upload | readonly |
+| `obs_describe_bucket_policy` | Get bucket ACL grants and public-access status | readonly |
+| `obs_describe_bucket_lifecycle` | Query bucket lifecycle rules (transition storage class, expiration). Returns empty list if no config set | readonly |
+
+### Security audit (read-only)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `obs_audit_bucket_security` | Composite security audit: public ACL exposure, no server-side encryption, no versioning, missing public access block. Returns risk_items[] with severity + remediation suggestions | readonly |
+
+### Write operations (two-phase confirmation)
+
+| Tool | Description | Min role |
+|------|-------------|----------|
+| `obs_upload_object` | Upload text/small file content to a bucket path (stream upload, optional storage class) | operator |
+| `obs_create_bucket` | Create a new bucket with ACL (default: private), optional storage class and encryption config | operator |
+| `obs_delete_object` | ⚠ Delete a single object (two-phase confirm — call obs_confirm_destructive after user approval) | admin |
+| `obs_set_bucket_policy` | ⚠ Set/update bucket policy JSON (two-phase confirm — call obs_confirm_destructive after user approval) | admin |
+| `obs_confirm_destructive` | Execute pending destructive OBS operation (delete_object / set_bucket_policy) | — |

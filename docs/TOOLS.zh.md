@@ -1,4 +1,4 @@
-# MCP 工具一览（63 个）
+# MCP 工具一览（75 个）
 
 > 角色层级：**admin** ⊃ **operator** ⊃ **readonly**
 
@@ -134,3 +134,32 @@
 |------|------|----------|
 | `rds_create_manual_backup` | ⚠ 创建手动备份快照（两阶段确认 — 用户批准后调用 rds_confirm_destructive） | operator |
 | `rds_confirm_destructive` | 确认执行待定的 RDS 破坏性操作（创建手动备份） | operator |
+
+## OBS — 对象存储服务管理（12 个）
+
+### 桶与对象查询（只读）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `obs_describe_buckets` | 列出所有桶 / 查看单个桶详情（dispatch: bucket_name=None → 列表含区域/存储类型/版本控制, 设置 → 详情含元数据 + ACL） | readonly |
+| `obs_list_objects` | 列举桶内对象，支持 prefix/delimiter/分页。设 include_versions=True 列出历史版本（需开启版本控制） | readonly |
+| `obs_get_object` | 默认 HEAD 获取对象元数据。设 include_content=True 下载内容（限制 1 MB，仅文本 — 二进制对象抛 BINARY_CONTENT 错误） | readonly |
+| `obs_generate_presigned_url` | 生成带时效的下载/上传 URL（V2 HMAC-SHA1 签名，虚拟主机风格）。method=GET 下载, PUT 上传 | readonly |
+| `obs_describe_bucket_policy` | 获取桶 ACL 授权信息和公开访问状态 | readonly |
+| `obs_describe_bucket_lifecycle` | 查询桶生命周期规则（转存储类、过期删除）。无配置时返回空列表 | readonly |
+
+### 安全审计（只读）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `obs_audit_bucket_security` | 复合安全审计：公开 ACL 暴露、未开启服务端加密、未开启版本控制、缺少公开访问阻断。返回 risk_items[] 含严重级别和修复建议 | readonly |
+
+### 写操作（两阶段确认）
+
+| 工具 | 说明 | 最低角色 |
+|------|------|----------|
+| `obs_upload_object` | 上传文本/小文件内容到指定桶路径（流式上传，可选存储类型） | operator |
+| `obs_create_bucket` | 创建新桶，含 ACL（默认 private）、可选存储类型和加密配置 | operator |
+| `obs_delete_object` | ⚠ 删除单个对象（两阶段确认 — 用户批准后调用 obs_confirm_destructive） | admin |
+| `obs_set_bucket_policy` | ⚠ 设置/更新桶策略 JSON（两阶段确认 — 用户批准后调用 obs_confirm_destructive） | admin |
+| `obs_confirm_destructive` | 确认执行待定的 OBS 破坏性操作（delete_object / set_bucket_policy） | — |

@@ -2,7 +2,7 @@
 
 This document collects **natural-language prompt examples** for calling each tool in this MCP Server from an Agent (Hermes / Claude Code / etc.). Copy-paste ready. All prompts are written from the perspective of a frontline SRE / DevOps / backend engineer.
 
-> Covers 8 services, 63 tools: ECS · Pipeline · CTS · CCE · LTS · CES · VPC · RDS
+> Covers 9 services, 75 tools: ECS · Pipeline · CTS · CCE · LTS · CES · VPC · RDS · OBS
 
 ---
 
@@ -257,7 +257,53 @@ This document collects **natural-language prompt examples** for calling each too
 
 ---
 
-## 9. Cross-Service Composite Scenarios (Agent Orchestration)
+## 9. OBS — Object Storage Service
+
+### Bucket & Object Queries (read-only)
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| List all buckets | "List all OBS buckets in my account" | `obs_describe_buckets` |
+| Bucket detail | "Get the detail of bucket my-bucket including storage class and versioning status" | `obs_describe_buckets(bucket_name=...)` |
+| List objects | "List all objects in bucket my-bucket" | `obs_list_objects` |
+| Prefix filter | "List objects under prefix 'logs/2024-06/' in bucket my-bucket" | `obs_list_objects(prefix=logs/2024-06/)` |
+| Directory structure | "Show the directory structure of bucket my-bucket using '/' delimiter" | `obs_list_objects(delimiter=/)` |
+| Object metadata | "Get the size and content-type of my-bucket/config/app.yaml without downloading it" | `obs_get_object` |
+| Object content | "Read the content of my-bucket/config/app.yaml (it's a small YAML file)" | `obs_get_object(include_content=True)` |
+| List versions | "List all versions of my-bucket/important.doc (versioning is enabled)" | `obs_list_objects(include_versions=True)` |
+| Presigned download URL | "Generate a download URL for my-bucket/report.pdf valid for 1 hour" | `obs_generate_presigned_url(method=GET, expires=3600)` |
+| Presigned upload URL | "Generate an upload URL for my-bucket/uploads/file.txt valid for 2 hours" | `obs_generate_presigned_url(method=PUT, expires=7200)` |
+| Bucket ACL | "Show the ACL and public-access status of bucket my-bucket" | `obs_describe_bucket_policy` |
+| Lifecycle rules | "What lifecycle rules are configured on bucket my-bucket?" | `obs_describe_bucket_lifecycle` |
+
+### Security Audit
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| Bucket security audit | "Audit bucket my-bucket for security risks" | `obs_audit_bucket_security` |
+| Batch audit | "Audit all my OBS buckets for public access and encryption status" | `obs_audit_bucket_security` (loop) |
+
+### Write Operations (two-phase confirmation)
+
+| Scenario | Prompt Example | Triggered Tool |
+|----------|---------------|----------------|
+| Upload config | "Upload this JSON config to my-bucket/config/deploy.json" | `obs_upload_object` |
+| Create bucket | "Create a new private bucket named 'ci-artifacts' in af-south-1" | `obs_create_bucket` |
+| Delete object | "Delete my-bucket/temp/old-report.csv" | `obs_delete_object` ⚠ |
+| Confirm delete | "Confirm the object deletion, approval_id=..." | `obs_confirm_destructive` |
+| Set bucket policy | "Set a public-read policy on bucket my-bucket" | `obs_set_bucket_policy` ⚠ |
+| Confirm policy | "Confirm the bucket policy update, approval_id=..." | `obs_confirm_destructive` |
+
+### Composite Scenarios
+
+- "Audit all OBS buckets for security risks and list the ones with high-risk findings"
+- "Generate a presigned download URL for my-bucket/report.pdf and verify it works with curl"
+- "List all objects in my-bucket/logs/ prefix from the past 7 days, then check lifecycle rules to see if any are scheduled for deletion"
+- "Read the deploy.json config from my-bucket, check if it references any RDS instances, and audit those instances for security"
+
+---
+
+## 10. Cross-Service Composite Scenarios (Agent Orchestration)
 
 The following scenarios require the Agent to chain multiple tools autonomously — this is where the MCP Server delivers real value:
 
@@ -351,9 +397,19 @@ Tools: `rds_describe_instances` → `rds_get_instance_metrics` → `rds_get_db_l
 
 Tools: `rds_list_backups` → `rds_audit_instance_security` → `rds_create_manual_backup` → `rds_confirm_destructive` → `rds_describe_parameter_group(instance_id=...)`
 
+### 10. OBS Bucket Security Sweep
+
+> "Audit all my OBS buckets:
+>  1. List all buckets
+>  2. For each bucket, check for public ACL, no encryption, no versioning
+>  3. Flag buckets with public-read ACL that contain sensitive data (config files, database dumps)
+>  4. Generate a report and upload it to a secure bucket"
+
+Tools: `obs_describe_buckets` → `obs_audit_bucket_security` (loop) → `obs_list_objects` → `obs_upload_object`
+
 ---
 
-## 10. Two-Phase Confirmation (Destructive Operations) Usage Guide
+## 11. Two-Phase Confirmation (Destructive Operations) Usage Guide
 
 Destructive tools return `{status: "pending_approval", approval_id: "..."}`. The Agent should:
 

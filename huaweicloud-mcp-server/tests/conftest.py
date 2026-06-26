@@ -251,6 +251,32 @@ def mock_lts_client_for_vpc(monkeypatch):
     return _clients
 
 
+@pytest.fixture
+def obs_settings() -> Settings:
+    """Settings shaped for OBS tests."""
+    return Settings(
+        access_key_id="AKID" + "X" * 16,
+        secret_access_key="SK" + "Y" * 38,
+        project_id="15f2d47addb14784b82eb910447250a9",
+        region="af-south-1",
+        log_file=None,
+        log_level="INFO",
+    )
+
+
+@pytest.fixture
+def mock_obs_client(monkeypatch):
+    """Replace get_client in OBS tool modules with a single MagicMock."""
+    fake = MagicMock(name="ObsClient")
+    for mod in (
+        "huaweicloud_mcp.services.obs.tools.query",
+        "huaweicloud_mcp.services.obs.tools.manage",
+        "huaweicloud_mcp.services.obs.tools.audit",
+    ):
+        monkeypatch.setattr(f"{mod}.get_client", lambda service, settings, _f=fake: _f)
+    return fake
+
+
 # --------------------------------------------------------------------------- #
 # Backward-compat aliases — old test files use `mock_client` and `settings`
 # for whichever service they test. These are overridden per-test-directory

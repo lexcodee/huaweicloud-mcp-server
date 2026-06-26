@@ -40,7 +40,7 @@ services:
     module: huaweicloud_mcp
     attr: build_server
     build_kwargs:
-      enabled: [ecs, pipeline, cts, cce, lts, ces, vpc, rds]
+      enabled: [ecs, pipeline, cts, cce, lts, ces, vpc, rds, obs]
       # Optional per-tool filters. Both are fnmatch globs evaluated against
       # the tool name (e.g. ``ecs_list_servers``). ``include`` runs first
       # (keep only matches), then ``exclude`` removes from the result.

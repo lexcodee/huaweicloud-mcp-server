@@ -35,7 +35,7 @@ VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 SERVER_NAME = "huaweicloud-mcp-server"
 
-ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc", "rds")
+ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc", "rds", "obs")
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -264,6 +264,30 @@ def build_server(
             "rds_audit_instance_security checks for public IP exposure, root remote "
             "access, storage near-full, missing backups, SSL disabled, and no replica."
         )
+    if "obs" in enabled:
+        instructions_parts.append(
+            "OBS (Object Storage Service): manage buckets and objects. "
+            "obs_describe_buckets dispatches list-vs-detail: omit bucket_name "
+            "to list all buckets, set it to get full detail (metadata, versioning, "
+            "ACL, public status). obs_list_objects lists objects with optional "
+            "prefix/delimiter/pagination; set include_versions=True to list all "
+            "historical versions. obs_get_object dispatches metadata-vs-content: "
+            "include_content=False (default) for HEAD metadata only, True to "
+            "download text content (size-limited to 1 MB). "
+            "obs_generate_presigned_url creates time-limited download/upload "
+            "URLs — the safest way to share files without exposing credentials. "
+            "obs_upload_object writes text/small files (configs, JSON reports). "
+            "obs_delete_object is DESTRUCTIVE (two-phase commit — call "
+            "obs_confirm_destructive(approval_id) after user approval). "
+            "obs_create_bucket creates a new bucket (defaults to private ACL). "
+            "obs_describe_bucket_policy returns ACL grants and public status. "
+            "obs_describe_bucket_lifecycle queries lifecycle rules (may use "
+            "raw HTTP if SDK lacks lifecycle API). "
+            "obs_set_bucket_policy is DESTRUCTIVE (two-phase commit). "
+            "obs_audit_bucket_security checks for public ACL, no encryption, "
+            "no versioning, and missing public access block — use for batch "
+            "security audits across all buckets."
+        )
 
     mcp = FastMCP(
         SERVER_NAME,
@@ -305,6 +329,10 @@ def build_server(
     if "rds" in enabled:
         from .services.rds.make_tools import make_tools as _rds_tools
         tools.update(_rds_tools(settings))
+
+    if "obs" in enabled:
+        from .services.obs.make_tools import make_tools as _obs_tools
+        tools.update(_obs_tools(settings))
 
     # Resolve include/exclude: explicit kwargs win, otherwise fall back to env.
     include_patterns = _normalise_patterns(include)
