@@ -149,6 +149,16 @@ def _ensure_registry() -> None:
         "credential_type": "obs",
     }
 
+    # ELB — Elastic Load Balance (v3). Project-scoped.
+    from huaweicloudsdkelb.v3.elb_client import ElbClient
+    from huaweicloudsdkelb.v3.region.elb_region import ElbRegion
+
+    _SERVICE_REGISTRY["elb"] = {
+        "client_cls": ElbClient,
+        "region_cls": ElbRegion,
+        "project_id_in_creds": True,
+    }
+
 
 def _build_http_config(settings: Settings) -> HttpConfig:
     cfg = HttpConfig.get_default_config()

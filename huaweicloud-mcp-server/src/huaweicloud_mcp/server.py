@@ -35,7 +35,7 @@ VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 SERVER_NAME = "huaweicloud-mcp-server"
 
-ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc", "rds", "obs")
+ALL_SERVICES = ("ecs", "pipeline", "cts", "cce", "lts", "ces", "vpc", "rds", "obs", "elb")
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -288,6 +288,30 @@ def build_server(
             "no versioning, and missing public access block — use for batch "
             "security audits across all buckets."
         )
+    if "elb" in enabled:
+        instructions_parts.append(
+            "ELB (Elastic Load Balance): inspect and manage load balancers, "
+            "listeners, backend groups, members, forwarding rules, certificates, "
+            "and access log config. "
+            "elb_describe_load_balancers / elb_describe_listeners / "
+            "elb_describe_backend_groups / elb_describe_forwarding_rules / "
+            "elb_list_certificates / elb_describe_access_log_config all dispatch "
+            "list-vs-detail: omit the id param to list, set it to get detail. "
+            "elb_list_backend_members lists pool members AND includes real-time "
+            "health status (ONLINE/OFFLINE/NO_MONITOR) via show_load_balancer_status "
+            "cross-call — merged from list_backend_servers + get_health_check_status. "
+            "elb_audit_health is a composite audit: cert expiry, all-backends-down, "
+            "listener without pool, cross-AZ imbalance. "
+            "elb_manage_backend_member dispatches add/remove/update_weight (remove "
+            "is DESTRUCTIVE — two-phase commit). "
+            "elb_manage_listener dispatches create/update/replace_certificate "
+            "(create is DESTRUCTIVE — two-phase commit). "
+            "elb_manage_forwarding_rule dispatches create/delete (delete is "
+            "DESTRUCTIVE — two-phase commit). "
+            "elb_set_connection_drain enables graceful member removal on a pool. "
+            "All destructive ops use two-phase commit — call "
+            "elb_confirm_destructive(approval_id) after user approval."
+        )
 
     mcp = FastMCP(
         SERVER_NAME,
@@ -333,6 +357,10 @@ def build_server(
     if "obs" in enabled:
         from .services.obs.make_tools import make_tools as _obs_tools
         tools.update(_obs_tools(settings))
+
+    if "elb" in enabled:
+        from .services.elb.make_tools import make_tools as _elb_tools
+        tools.update(_elb_tools(settings))
 
     # Resolve include/exclude: explicit kwargs win, otherwise fall back to env.
     include_patterns = _normalise_patterns(include)

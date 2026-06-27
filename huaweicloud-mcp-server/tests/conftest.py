@@ -277,6 +277,32 @@ def mock_obs_client(monkeypatch):
     return fake
 
 
+@pytest.fixture
+def elb_settings() -> Settings:
+    """Settings shaped for ELB tests."""
+    return Settings(
+        access_key_id="AKID" + "X" * 16,
+        secret_access_key="SK" + "Y" * 38,
+        project_id="15f2d47addb14784b82eb910447250a9",
+        region="af-south-1",
+        log_file=None,
+        log_level="INFO",
+    )
+
+
+@pytest.fixture
+def mock_elb_client(monkeypatch):
+    """Replace get_client in ELB tool modules with a single MagicMock."""
+    fake = MagicMock(name="ElbClient")
+    for mod in (
+        "huaweicloud_mcp.services.elb.tools.query",
+        "huaweicloud_mcp.services.elb.tools.audit",
+        "huaweicloud_mcp.services.elb.tools.manage",
+    ):
+        monkeypatch.setattr(f"{mod}.get_client", lambda service, settings, _f=fake: _f)
+    return fake
+
+
 # --------------------------------------------------------------------------- #
 # Backward-compat aliases — old test files use `mock_client` and `settings`
 # for whichever service they test. These are overridden per-test-directory
